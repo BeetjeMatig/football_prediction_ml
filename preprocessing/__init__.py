@@ -7,6 +7,11 @@ from .cleaner import (
     clean_file,
     print_cleaning_report,
 )
+from .features import (
+    RECENT_FORM_REQUIRED_COLUMNS,
+    add_recent_form_features,
+    get_recent_form_feature_columns,
+)
 from .pipeline import (
     PipelineRunSummary,
     print_pipeline_summary,
@@ -41,6 +46,9 @@ __all__ = [
     "clean_file",
     "clean_all",
     "print_cleaning_report",
+    "RECENT_FORM_REQUIRED_COLUMNS",
+    "add_recent_form_features",
+    "get_recent_form_feature_columns",
     "PipelineRunSummary",
     "run_preprocessing",
     "run_preprocessing_variants",

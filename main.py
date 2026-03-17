@@ -38,6 +38,17 @@ def main() -> None:
         action="store_true",
         help="For preprocessing: write both base (no odds) and extended (with odds).",
     )
+    parser.add_argument(
+        "--add-recent-form-features",
+        action="store_true",
+        help="For preprocessing: add rolling recent-form features based only on prior matches.",
+    )
+    parser.add_argument(
+        "--recent-form-window",
+        type=int,
+        default=5,
+        help="For preprocessing with recent-form features: rolling window size.",
+    )
     args = parser.parse_args()
 
     if args.stage in {"scrape", "all"}:
@@ -50,6 +61,8 @@ def main() -> None:
             raw_dir=Path("data") / "raw",
             processed_dir=Path("data") / "processed",
             include_odds_variants=variants,
+            add_recent_form_features=args.add_recent_form_features,
+            recent_form_window=args.recent_form_window,
         )
         for summary in summaries:
             print_pipeline_summary(summary)

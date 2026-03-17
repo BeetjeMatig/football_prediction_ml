@@ -1,6 +1,6 @@
 # Football Match Outcome Predictor
 
-Scrapes top-flight league CSVs from football-data.co.uk across the available country league pages.
+Scrapes top-flight league CSVs from football-data.co.uk and preprocesses them into model-ready datasets for football match outcome prediction.
 
 ## Data Source
 
@@ -8,14 +8,20 @@ Scrapes top-flight league CSVs from football-data.co.uk across the available cou
 - The scraper first hits the main download page, discovers country league pages, then downloads the top-flight CSVs for each country
 - Data is collected through web scraping (no API)
 
-## V1 Scope
+## Current Scope
 
-This version only handles scraping and saving raw top-flight league CSV data.
+The project currently supports two stages:
 
-- It discovers the available country league pages from the main download page.
-- For each country page, it identifies the first league code shown, treats it as that country's top division, and downloads those CSVs.
-- Files are saved as `data/raw/<country>/<country>_<leaguecode>_YYYY-YY.csv`.
-- A minimum start year can be set with `--min-start-year`.
+- Scraping raw top-flight league CSV data from football-data.co.uk.
+- Preprocessing raw CSVs into cleaned datasets, with optional betting odds columns and optional recent-form features.
+
+Current preprocessing capabilities:
+
+- Legend-driven schema and column alias normalization.
+- Schema validation across raw files.
+- Data cleaning and dtype coercion.
+- Two output variants: without odds and with odds.
+- Optional recent-form features built from prior matches only.
 
 ## Setup
 
@@ -40,6 +46,39 @@ Example with a minimum season start year of 2010:
 python main.py --min-start-year 2010
 ```
 
+Preprocess existing raw data without betting odds:
+
+```bash
+python main.py --stage preprocess
+```
+
+Preprocess existing raw data and write both base and extended outputs:
+
+```bash
+python main.py --stage preprocess --write-both-variants
+```
+
+Preprocess with recent-form features added:
+
+```bash
+python main.py --stage preprocess --write-both-variants --add-recent-form-features
+```
+
+Run scraping and preprocessing in one command:
+
+```bash
+python main.py --stage all --write-both-variants
+```
+
+Processed output directories currently follow this pattern:
+
+- `data/processed/base`
+- `data/processed/extended`
+- `data/processed/base_recent_form_w5`
+- `data/processed/extended_recent_form_w5`
+
+The recent-form variants are written separately so cleaned-only outputs are not overwritten.
+
 ## Rate Limiting
 
 The scraper waits `6` seconds between requests and sends a polite User-Agent header.
@@ -47,17 +86,32 @@ The scraper waits `6` seconds between requests and sends a polite User-Agent hea
 ## Known Limitations
 
 - football-data.co.uk may change its page structure or remove country/season links over time.
-- The downloaded files are stored raw, so they include all columns provided by the source site.
+- Recent-form features are currently computed within each CSV file separately rather than across a full multi-season team history.
+- Only a subset of market-level betting odds columns are standardized into the current schema.
 
 ## Current Structure
 
 ```
 football_prediction_ml/
+├── preprocessing/
+│   ├── __init__.py
+│   ├── cleaner.py
+│   ├── features.py
+│   ├── pipeline.py
+│   ├── schema.py
+│   ├── selection.py
+│   └── validator.py
 ├── scraper/
 │   ├── __init__.py
-│   └── football_data_scraper.py
+│   ├── config.py
+│   ├── discovery.py
+│   ├── downloader.py
+│   ├── football_data_scraper.py
+│   └── utils.py
 ├── data/
-│   └── raw/
+│   ├── raw/
+│   ├── processed/
+│   └── legend.txt
 ├── main.py
 ├── requirements.txt
 ├── .gitignore
