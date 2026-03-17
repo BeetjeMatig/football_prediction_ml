@@ -10,9 +10,10 @@ import pandas as pd
 
 from .pipeline import get_processed_variant_name
 
-
 TARGET_COLUMN = "target_result"
 IDENTIFIER_COLUMNS = ["date", "div", "home_team", "away_team"]
+ALLOWED_CONTEXT_FEATURE_COLUMNS = {"time"}
+ALLOWED_FEATURE_PREFIXES = ("odds_", "home_", "away_")
 
 # These columns contain information from the match being predicted and must not be
 # used as direct model inputs for a pre-match outcome model.
@@ -33,6 +34,20 @@ LEAKAGE_COLUMNS = {
     "home_red_cards",
     "away_red_cards",
 }
+
+
+def is_modeling_feature_column(column: str) -> bool:
+    """Return whether a column is allowed as a leakage-safe model feature."""
+
+    if column in IDENTIFIER_COLUMNS:
+        return False
+    if column == TARGET_COLUMN:
+        return False
+    if column in LEAKAGE_COLUMNS:
+        return False
+    if column in ALLOWED_CONTEXT_FEATURE_COLUMNS:
+        return True
+    return column.startswith(ALLOWED_FEATURE_PREFIXES)
 
 
 @dataclass
@@ -86,11 +101,9 @@ def get_modeling_feature_columns(columns: Iterable[str]) -> List[str]:
     """Return leakage-safe feature columns based on available dataset columns."""
 
     available_columns = list(columns)
-    excluded_columns = set(IDENTIFIER_COLUMNS)
-    excluded_columns.add(TARGET_COLUMN)
-    excluded_columns.update(LEAKAGE_COLUMNS)
-
-    return [column for column in available_columns if column not in excluded_columns]
+    return [
+        column for column in available_columns if is_modeling_feature_column(column)
+    ]
 
 
 def split_features_and_target(
@@ -108,6 +121,59 @@ def split_features_and_target(
     y = df[TARGET_COLUMN].copy()
     metadata = df[metadata_columns].copy()
     return x, y, metadata
+
+
+def _encode_kickoff_time_to_minutes(series: pd.Series) -> pd.Series:
+    """Convert HH:MM kickoff times into minutes since midnight."""
+
+    as_text = series.astype("string").str.strip()
+    extracted = as_text.str.extract(r"^(?P<hour>\d{1,2}):(?P<minute>\d{2})")
+
+    hours = pd.to_numeric(extracted["hour"], errors="coerce")
+    minutes = pd.to_numeric(extracted["minute"], errors="coerce")
+    return (hours * 60.0) + minutes
+
+
+def preprocess_modeling_features(
+    x_train: pd.DataFrame,
+    x_test: pd.DataFrame,
+    recent_form_window: int,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Apply train-fitted feature preprocessing for modeling datasets."""
+
+    train_processed = x_train.copy()
+    test_processed = x_test.copy()
+
+    if "time" in train_processed.columns:
+        train_processed["time"] = _encode_kickoff_time_to_minutes(
+            train_processed["time"]
+        )
+        test_processed["time"] = _encode_kickoff_time_to_minutes(test_processed["time"])
+
+    for side in ("home", "away"):
+        matches_col = f"{side}_matches_played_before_match"
+        sparse_col = f"{side}_sparse_history"
+        if matches_col in train_processed.columns:
+            train_processed[sparse_col] = (
+                train_processed[matches_col] < recent_form_window
+            ).astype("int64")
+            test_processed[sparse_col] = (
+                test_processed[matches_col] < recent_form_window
+            ).astype("int64")
+
+    numeric_columns = train_processed.select_dtypes(include="number").columns.tolist()
+    if numeric_columns:
+        fill_values = (
+            train_processed[numeric_columns].median(numeric_only=True).fillna(0.0)
+        )
+        train_processed[numeric_columns] = train_processed[numeric_columns].fillna(
+            fill_values
+        )
+        test_processed[numeric_columns] = test_processed[numeric_columns].fillna(
+            fill_values
+        )
+
+    return train_processed, test_processed
 
 
 def build_modeling_dataset(
@@ -140,6 +206,11 @@ def build_modeling_dataset(
 
     x_train, y_train, train_metadata = split_features_and_target(train_df)
     x_test, y_test, test_metadata = split_features_and_target(test_df)
+    x_train, x_test = preprocess_modeling_features(
+        x_train=x_train,
+        x_test=x_test,
+        recent_form_window=recent_form_window,
+    )
 
     variant_name = get_processed_variant_name(
         include_odds=include_odds,

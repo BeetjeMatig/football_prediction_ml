@@ -8,6 +8,7 @@ from typing import List, Tuple
 
 import pandas as pd
 
+from .features import add_cross_season_recent_form_features
 from .pipeline import get_processed_variant_dir, get_processed_variant_name
 
 
@@ -88,10 +89,11 @@ def run_date_split(
 ) -> SplitRunSummary:
     """Combine processed files for one variant and write date-based train/test CSVs."""
 
+    input_include_recent_form_features = False
     input_dir = get_processed_variant_dir(
         processed_dir=processed_dir,
         include_odds=include_odds,
-        add_recent_form_features=add_recent_form_features,
+        add_recent_form_features=input_include_recent_form_features,
         recent_form_window=recent_form_window,
     )
     variant_name = get_processed_variant_name(
@@ -101,6 +103,11 @@ def run_date_split(
     )
 
     combined_df, files_read = load_processed_dataset(input_dir)
+    if add_recent_form_features:
+        combined_df = add_cross_season_recent_form_features(
+            combined_df,
+            window=recent_form_window,
+        )
     train_df, test_df = split_dataset_by_date(combined_df, cutoff_date=cutoff_date)
 
     output_dir = splits_dir / f"date_{cutoff_date}" / variant_name

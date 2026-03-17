@@ -23,7 +23,7 @@ Current preprocessing capabilities:
 - Schema validation across raw files.
 - Data cleaning and dtype coercion.
 - Two output variants: without odds and with odds.
-- Optional recent-form features built from prior matches only.
+- Optional cross-season recent-form features built from prior matches only.
 
 ## Setup
 
@@ -77,6 +77,9 @@ Create a date-based split from processed data:
 ```bash
 python main.py --stage split --add-recent-form-features --split-cutoff-date 2024-08-01
 ```
+
+When recent-form is enabled in the split stage, features are recomputed on the
+combined multi-file dataset so team history continues across seasons.
 
 Create leakage-safe modeling datasets from an existing split:
 
@@ -143,9 +146,19 @@ Examples of excluded columns:
 
 Examples of retained columns:
 
+- kickoff time (`time`) as a valid pre-match context feature
+- kickoff time encoded to minutes since midnight during modeling dataset prep
 - division, teams, and date in separate metadata files
 - rolling recent-form features
+- sparse-history indicators (`home_sparse_history`, `away_sparse_history`)
 - optional market odds columns when that variant is selected
+
+Additional modeling-prep transformations:
+
+- Missing numeric feature values are imputed using training-set medians and then
+	applied to both train and test.
+- Sparse-history indicators mark teams with fewer than the selected recent-form
+	window of prior matches.
 
 This stage does not assume a fixed set of seasons. It uses whatever train/test rows are present in the selected split directory.
 
@@ -156,10 +169,8 @@ The scraper waits `6` seconds between requests and sends a polite User-Agent hea
 ## Known Limitations
 
 - football-data.co.uk may change its page structure or remove country/season links over time.
-- Recent-form features are currently computed within each CSV file separately rather than across a full multi-season team history.
 - Only a subset of market-level betting odds columns are standardized into the current schema.
 - The current train/test split combines processed files and splits by cutoff date, but model training itself is not implemented yet.
-- Cross-season recent-form continuity is still not implemented; recent-form features currently reset at file boundaries.
 
 ## Current Structure
 
@@ -169,9 +180,11 @@ football_prediction_ml/
 │   ├── __init__.py
 │   ├── cleaner.py
 │   ├── features.py
+│   ├── modeling.py
 │   ├── pipeline.py
 │   ├── schema.py
 │   ├── selection.py
+│   ├── splitter.py
 │   └── validator.py
 ├── scraper/
 │   ├── __init__.py

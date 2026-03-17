@@ -35,19 +35,12 @@ def get_recent_form_feature_columns(window: int = 5) -> List[str]:
     return columns
 
 
-def add_recent_form_features(df: pd.DataFrame, window: int = 5) -> pd.DataFrame:
-    """Add no-leak recent-form features built from each team's prior matches.
-
-    Features are computed within the current dataframe only, grouped by division and
-    team, and use only matches that occurred earlier in the file's date order.
-    """
-
-    missing_columns = sorted(RECENT_FORM_REQUIRED_COLUMNS - set(df.columns))
-    if missing_columns:
-        raise ValueError(
-            "Cannot build recent-form features; missing columns: "
-            + ", ".join(missing_columns)
-        )
+def _build_recent_form_features(
+    df: pd.DataFrame,
+    window: int,
+    group_keys: List[str],
+) -> pd.DataFrame:
+    """Build no-leak recent-form features for the provided grouping keys."""
 
     working = df.copy().reset_index(drop=True)
     working["_row_id"] = working.index
@@ -84,9 +77,8 @@ def add_recent_form_features(df: pd.DataFrame, window: int = 5) -> pd.DataFrame:
     team_history["goal_diff"] = (
         team_history["goals_for"] - team_history["goals_against"]
     )
-    team_history = team_history.sort_values(["div", "team", "date", "_row_id"])
+    team_history = team_history.sort_values([*group_keys, "date", "_row_id"])
 
-    group_keys = ["div", "team"]
     team_history["matches_played_before_match"] = team_history.groupby(
         group_keys
     ).cumcount()
@@ -127,3 +119,41 @@ def add_recent_form_features(df: pd.DataFrame, window: int = 5) -> pd.DataFrame:
         featured[column] = featured[column].astype("Int64")
 
     return featured
+
+
+def add_recent_form_features(df: pd.DataFrame, window: int = 5) -> pd.DataFrame:
+    """Add no-leak recent-form features built from each team's prior matches.
+
+    Features are computed within the current dataframe only, grouped by division and
+    team, and use only matches that occurred earlier in the file's date order.
+    """
+
+    missing_columns = sorted(RECENT_FORM_REQUIRED_COLUMNS - set(df.columns))
+    if missing_columns:
+        raise ValueError(
+            "Cannot build recent-form features; missing columns: "
+            + ", ".join(missing_columns)
+        )
+
+    return _build_recent_form_features(df=df, window=window, group_keys=["div", "team"])
+
+
+def add_cross_season_recent_form_features(
+    df: pd.DataFrame,
+    window: int = 5,
+) -> pd.DataFrame:
+    """Add no-leak recent-form features across all seasons for each division/team.
+
+    This function is intended for combined multi-file datasets and preserves team
+    history across season boundaries. Newly promoted teams naturally start with no
+    prior top-flight history in the dataset.
+    """
+
+    missing_columns = sorted(RECENT_FORM_REQUIRED_COLUMNS - set(df.columns))
+    if missing_columns:
+        raise ValueError(
+            "Cannot build cross-season recent-form features; missing columns: "
+            + ", ".join(missing_columns)
+        )
+
+    return _build_recent_form_features(df=df, window=window, group_keys=["div", "team"])
