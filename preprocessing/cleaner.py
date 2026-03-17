@@ -44,9 +44,9 @@ def _coerce_known_dtypes(df: pd.DataFrame) -> pd.DataFrame:
                 df[canonical_name], dayfirst=True, errors="coerce"
             )
         elif spec.dtype == "Int64":
-            df[canonical_name] = pd.to_numeric(df[canonical_name], errors="coerce").astype(
-                "Int64"
-            )
+            df[canonical_name] = pd.to_numeric(
+                df[canonical_name], errors="coerce"
+            ).astype("Int64")
         elif spec.dtype == "float64":
             df[canonical_name] = pd.to_numeric(df[canonical_name], errors="coerce")
         elif spec.dtype == "string":
@@ -65,7 +65,9 @@ def clean_dataframe(df: pd.DataFrame, include_odds: bool) -> pd.DataFrame:
     cleaned = df.rename(columns=rename_map).copy()
     cleaned = _coerce_known_dtypes(cleaned)
 
-    required_present = [column for column in REQUIRED_COLUMNS if column in cleaned.columns]
+    required_present = [
+        column for column in REQUIRED_COLUMNS if column in cleaned.columns
+    ]
     if required_present:
         cleaned = cleaned.dropna(subset=required_present)
 
@@ -77,7 +79,9 @@ def clean_dataframe(df: pd.DataFrame, include_odds: bool) -> pd.DataFrame:
     return cleaned[output_columns]
 
 
-def clean_file(csv_path: Path, include_odds: bool) -> Tuple[pd.DataFrame, CleaningResult]:
+def clean_file(
+    csv_path: Path, include_odds: bool
+) -> Tuple[pd.DataFrame, CleaningResult]:
     """Read and clean a single CSV file."""
 
     df = pd.read_csv(csv_path)

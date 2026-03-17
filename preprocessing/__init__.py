@@ -1,5 +1,18 @@
 """Preprocessing package for schema-driven data preparation."""
 
+from .cleaner import (
+    CleaningResult,
+    clean_all,
+    clean_dataframe,
+    clean_file,
+    print_cleaning_report,
+)
+from .pipeline import (
+    PipelineRunSummary,
+    print_pipeline_summary,
+    run_preprocessing,
+    run_preprocessing_variants,
+)
 from .schema import (
     COLUMN_SCHEMA,
     ODDS_GROUPS,
@@ -8,7 +21,6 @@ from .schema import (
     normalize_column_name,
     normalize_columns,
 )
-from .cleaner import CleaningResult, clean_all, clean_dataframe, clean_file, print_cleaning_report
 from .selection import select_output_columns
 from .validator import (
     ValidationResult,
@@ -29,6 +41,10 @@ __all__ = [
     "clean_file",
     "clean_all",
     "print_cleaning_report",
+    "PipelineRunSummary",
+    "run_preprocessing",
+    "run_preprocessing_variants",
+    "print_pipeline_summary",
     "select_output_columns",
     "ValidationResult",
     "validate_file",
