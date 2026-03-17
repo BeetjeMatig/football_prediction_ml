@@ -10,12 +10,14 @@ Scrapes top-flight league CSVs from football-data.co.uk and preprocesses them in
 
 ## Current Scope
 
-The project currently supports four stages:
+The project currently supports six stages:
 
 - Scraping raw top-flight league CSV data from football-data.co.uk.
 - Preprocessing raw CSVs into cleaned datasets, with optional betting odds columns and optional recent-form features.
 - Combining processed datasets and splitting them into train/test sets by date.
 - Building leakage-safe modeling datasets from those train/test splits.
+- Training candidate classification models and selecting the best by test log loss.
+- Predicting a future matchup from team histories, with optional manual feature overrides for scenario testing.
 
 Current preprocessing capabilities:
 
@@ -87,6 +89,24 @@ Create leakage-safe modeling datasets from an existing split:
 python main.py --stage modeldata --add-recent-form-features --split-cutoff-date 2024-08-01
 ```
 
+Train candidate models and save the best artifact:
+
+```bash
+python main.py --stage train --add-recent-form-features --split-cutoff-date 2024-08-01
+```
+
+Predict one matchup from historical team form:
+
+```bash
+python main.py --stage predict --add-recent-form-features --split-cutoff-date 2024-08-01 --division E0 --home-team "Arsenal" --away-team "Chelsea"
+```
+
+Scenario analysis with manual overrides:
+
+```bash
+python main.py --stage predict --include-odds --add-recent-form-features --split-cutoff-date 2024-08-01 --division E0 --home-team "Arsenal" --away-team "Chelsea" --kickoff-time 20:00 --feature-override odds_home_win=1.85 --feature-override home_points_avg_last_5=2.4
+```
+
 Processed output directories currently follow this pattern:
 
 - `data/processed/base`
@@ -109,6 +129,13 @@ Modeling datasets are written under:
 - `data/modeling/date_YYYY-MM-DD/<variant>/y_test.csv`
 - `data/modeling/date_YYYY-MM-DD/<variant>/train_metadata.csv`
 - `data/modeling/date_YYYY-MM-DD/<variant>/test_metadata.csv`
+
+Trained model outputs are written under:
+
+- `data/models/date_YYYY-MM-DD/<variant>/best_model.pkl`
+- `data/models/date_YYYY-MM-DD/<variant>/metrics.csv`
+- `data/models/date_YYYY-MM-DD/<variant>/test_predictions.csv`
+- `data/models/date_YYYY-MM-DD/<variant>/artifact_meta.json`
 
 The modeling stage is independent of how many years or seasons were included upstream. It works from whatever rows exist in the selected split and filters columns by leakage rules rather than by hard-coded seasons.
 
@@ -162,6 +189,27 @@ Additional modeling-prep transformations:
 
 This stage does not assume a fixed set of seasons. It uses whatever train/test rows are present in the selected split directory.
 
+## Model Training Strategy
+
+The training stage currently fits two multiclass classifiers on each selected variant:
+
+- Multinomial logistic regression (interpretable baseline)
+- Histogram-based gradient boosting (strong tabular model)
+
+Model selection currently uses test-set log loss as the primary metric. Accuracy and macro F1 are also exported for comparison.
+
+## Prediction and Simulation
+
+The prediction stage builds a pre-match feature row from each team's most recent known history in the chosen division and cutoff dataset.
+
+You can manually override any model feature using one or more `--feature-override feature=value` arguments to test what-if scenarios.
+
+Examples:
+
+- Stronger home form: `--feature-override home_points_avg_last_5=2.3`
+- Weaker away defense: `--feature-override away_goals_against_avg_last_5=1.8`
+- Better home market price: `--feature-override odds_home_win=1.75`
+
 ## Rate Limiting
 
 The scraper waits `6` seconds between requests and sends a polite User-Agent header.
@@ -176,6 +224,9 @@ The scraper waits `6` seconds between requests and sends a polite User-Agent hea
 
 ```
 football_prediction_ml/
+├── model/
+│   ├── __init__.py
+│   └── pipeline.py
 ├── preprocessing/
 │   ├── __init__.py
 │   ├── cleaner.py

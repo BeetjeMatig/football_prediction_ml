@@ -5,6 +5,12 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from model.pipeline import (
+    predict_match_outcome,
+    print_prediction_summary,
+    print_train_summary,
+    train_model_variants,
+)
 from preprocessing.modeling import (
     build_modeling_dataset_variants,
     print_modeling_summary,
@@ -23,7 +29,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--stage",
-        choices=["scrape", "preprocess", "split", "modeldata", "all"],
+        choices=["scrape", "preprocess", "split", "modeldata", "train", "predict", "all"],
         default="scrape",
         help="Pipeline stage to run.",
     )
@@ -59,12 +65,61 @@ def main() -> None:
         type=str,
         help="For date-based splitting: first date included in the test set, in YYYY-MM-DD format.",
     )
+    parser.add_argument(
+        "--division",
+        type=str,
+        help="For predict stage: division code (for example E0, SP1, I1).",
+    )
+    parser.add_argument(
+        "--home-team",
+        type=str,
+        help="For predict stage: home team name.",
+    )
+    parser.add_argument(
+        "--away-team",
+        type=str,
+        help="For predict stage: away team name.",
+    )
+    parser.add_argument(
+        "--as-of-date",
+        type=str,
+        help="For predict stage: use team history up to this YYYY-MM-DD date.",
+    )
+    parser.add_argument(
+        "--kickoff-time",
+        type=str,
+        help="For predict stage: kickoff time in HH:MM format (optional).",
+    )
+    parser.add_argument(
+        "--feature-override",
+        action="append",
+        default=[],
+        help=(
+            "For predict stage: override one feature as feature=value. "
+            "Can be repeated, e.g. --feature-override odds_home_win=1.9"
+        ),
+    )
     args = parser.parse_args()
 
-    if args.stage in {"split", "modeldata", "all"} and not args.split_cutoff_date:
+    if args.stage in {"split", "modeldata", "train", "predict", "all"} and not args.split_cutoff_date:
         parser.error(
-            "--split-cutoff-date is required when --stage is 'split', 'modeldata', or 'all'."
+            "--split-cutoff-date is required when --stage is 'split', 'modeldata', 'train', 'predict', or 'all'."
         )
+
+    if args.stage == "predict":
+        missing_predict_args = [
+            name
+            for name, value in [
+                ("--division", args.division),
+                ("--home-team", args.home_team),
+                ("--away-team", args.away_team),
+            ]
+            if not value
+        ]
+        if missing_predict_args:
+            parser.error(
+                "Missing required predict arguments: " + ", ".join(missing_predict_args)
+            )
 
     if args.stage in {"scrape", "all"}:
         written = scrape_top_flight_leagues(min_start_year=args.min_start_year)
@@ -107,6 +162,36 @@ def main() -> None:
         )
         for summary in summaries:
             print_modeling_summary(summary)
+
+    if args.stage in {"train", "all"}:
+        variants = [False, True] if args.write_both_variants else [args.include_odds]
+        summaries = train_model_variants(
+            modeling_dir=Path("data") / "modeling",
+            models_dir=Path("data") / "models",
+            cutoff_date=args.split_cutoff_date,
+            include_odds_variants=variants,
+            add_recent_form_features=args.add_recent_form_features,
+            recent_form_window=args.recent_form_window,
+        )
+        for summary in summaries:
+            print_train_summary(summary)
+
+    if args.stage == "predict":
+        summary = predict_match_outcome(
+            splits_dir=Path("data") / "splits",
+            models_dir=Path("data") / "models",
+            cutoff_date=args.split_cutoff_date,
+            include_odds=args.include_odds,
+            division=args.division,
+            home_team=args.home_team,
+            away_team=args.away_team,
+            add_recent_form_features=args.add_recent_form_features,
+            recent_form_window=args.recent_form_window,
+            as_of_date=args.as_of_date,
+            kickoff_time=args.kickoff_time,
+            feature_overrides=args.feature_override,
+        )
+        print_prediction_summary(summary)
 
 
 if __name__ == "__main__":
