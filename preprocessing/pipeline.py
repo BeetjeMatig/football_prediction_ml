@@ -38,16 +38,32 @@ class PipelineRunSummary:
         )
 
 
-def _variant_dir(
+def get_processed_variant_name(
+    include_odds: bool,
+    add_recent_form_features: bool,
+    recent_form_window: int,
+) -> str:
+    """Return the directory name for a processed data variant."""
+
+    variant_name = "extended" if include_odds else "base"
+    if add_recent_form_features:
+        variant_name = f"{variant_name}_recent_form_w{recent_form_window}"
+    return variant_name
+
+
+def get_processed_variant_dir(
     processed_dir: Path,
     include_odds: bool,
     add_recent_form_features: bool,
     recent_form_window: int,
 ) -> Path:
-    variant_name = "extended" if include_odds else "base"
-    if add_recent_form_features:
-        variant_name = f"{variant_name}_recent_form_w{recent_form_window}"
-    return processed_dir / variant_name
+    """Return the directory path for a processed data variant."""
+
+    return processed_dir / get_processed_variant_name(
+        include_odds=include_odds,
+        add_recent_form_features=add_recent_form_features,
+        recent_form_window=recent_form_window,
+    )
 
 
 def run_preprocessing(
@@ -59,7 +75,7 @@ def run_preprocessing(
 ) -> PipelineRunSummary:
     """Clean all raw CSV files and write processed outputs preserving folder layout."""
 
-    variant_dir = _variant_dir(
+    variant_dir = get_processed_variant_dir(
         processed_dir,
         include_odds,
         add_recent_form_features,

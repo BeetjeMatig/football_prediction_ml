@@ -10,10 +10,11 @@ Scrapes top-flight league CSVs from football-data.co.uk and preprocesses them in
 
 ## Current Scope
 
-The project currently supports two stages:
+The project currently supports three stages:
 
 - Scraping raw top-flight league CSV data from football-data.co.uk.
 - Preprocessing raw CSVs into cleaned datasets, with optional betting odds columns and optional recent-form features.
+- Combining processed datasets and splitting them into train/test sets by date.
 
 Current preprocessing capabilities:
 
@@ -70,6 +71,12 @@ Run scraping and preprocessing in one command:
 python main.py --stage all --write-both-variants
 ```
 
+Create a date-based split from processed data:
+
+```bash
+python main.py --stage split --add-recent-form-features --split-cutoff-date 2024-08-01
+```
+
 Processed output directories currently follow this pattern:
 
 - `data/processed/base`
@@ -78,6 +85,33 @@ Processed output directories currently follow this pattern:
 - `data/processed/extended_recent_form_w5`
 
 The recent-form variants are written separately so cleaned-only outputs are not overwritten.
+
+Date-based split outputs are written under:
+
+- `data/splits/date_YYYY-MM-DD/<variant>/train.csv`
+- `data/splits/date_YYYY-MM-DD/<variant>/test.csv`
+
+## Train/Test Split Strategy
+
+When the project moves to model training, the train/test split should be date-based rather than random.
+
+Why this matters:
+
+- This is a forecasting problem, so the model should train on older matches and be evaluated on newer matches.
+- A random split would mix future matches into the training set and give an unrealistically optimistic score.
+- The existing recent-form features are already time-aware, so the evaluation strategy should follow the same logic.
+
+Recommended approach:
+
+- Train on earlier seasons or matches before a chosen cutoff date.
+- Test on later seasons or matches on or after that cutoff date.
+
+Example:
+
+- Train: seasons `2020-21` through `2023-24`
+- Test: season `2024-25`
+
+This is now the default split strategy for the repository's split stage and should remain the default for any future model training pipeline.
 
 ## Rate Limiting
 
@@ -88,6 +122,7 @@ The scraper waits `6` seconds between requests and sends a polite User-Agent hea
 - football-data.co.uk may change its page structure or remove country/season links over time.
 - Recent-form features are currently computed within each CSV file separately rather than across a full multi-season team history.
 - Only a subset of market-level betting odds columns are standardized into the current schema.
+- The current train/test split combines processed files and splits by cutoff date, but model training itself is not implemented yet.
 
 ## Current Structure
 

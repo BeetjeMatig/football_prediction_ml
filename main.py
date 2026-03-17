@@ -6,6 +6,7 @@ import argparse
 from pathlib import Path
 
 from preprocessing.pipeline import print_pipeline_summary, run_preprocessing_variants
+from preprocessing.splitter import print_split_summary, run_date_split_variants
 from scraper.config import MIN_START_YEAR
 from scraper.football_data_scraper import scrape_top_flight_leagues
 
@@ -18,7 +19,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--stage",
-        choices=["scrape", "preprocess", "all"],
+        choices=["scrape", "preprocess", "split", "all"],
         default="scrape",
         help="Pipeline stage to run.",
     )
@@ -49,7 +50,15 @@ def main() -> None:
         default=5,
         help="For preprocessing with recent-form features: rolling window size.",
     )
+    parser.add_argument(
+        "--split-cutoff-date",
+        type=str,
+        help="For date-based splitting: first date included in the test set, in YYYY-MM-DD format.",
+    )
     args = parser.parse_args()
+
+    if args.stage in {"split", "all"} and not args.split_cutoff_date:
+        parser.error("--split-cutoff-date is required when --stage is 'split' or 'all'.")
 
     if args.stage in {"scrape", "all"}:
         written = scrape_top_flight_leagues(min_start_year=args.min_start_year)
@@ -66,6 +75,19 @@ def main() -> None:
         )
         for summary in summaries:
             print_pipeline_summary(summary)
+
+    if args.stage in {"split", "all"}:
+        variants = [False, True] if args.write_both_variants else [args.include_odds]
+        summaries = run_date_split_variants(
+            processed_dir=Path("data") / "processed",
+            splits_dir=Path("data") / "splits",
+            include_odds_variants=variants,
+            cutoff_date=args.split_cutoff_date,
+            add_recent_form_features=args.add_recent_form_features,
+            recent_form_window=args.recent_form_window,
+        )
+        for summary in summaries:
+            print_split_summary(summary)
 
 
 if __name__ == "__main__":
