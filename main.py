@@ -5,6 +5,10 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from preprocessing.modeling import (
+    build_modeling_dataset_variants,
+    print_modeling_summary,
+)
 from preprocessing.pipeline import print_pipeline_summary, run_preprocessing_variants
 from preprocessing.splitter import print_split_summary, run_date_split_variants
 from scraper.config import MIN_START_YEAR
@@ -19,7 +23,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--stage",
-        choices=["scrape", "preprocess", "split", "all"],
+        choices=["scrape", "preprocess", "split", "modeldata", "all"],
         default="scrape",
         help="Pipeline stage to run.",
     )
@@ -57,8 +61,10 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    if args.stage in {"split", "all"} and not args.split_cutoff_date:
-        parser.error("--split-cutoff-date is required when --stage is 'split' or 'all'.")
+    if args.stage in {"split", "modeldata", "all"} and not args.split_cutoff_date:
+        parser.error(
+            "--split-cutoff-date is required when --stage is 'split', 'modeldata', or 'all'."
+        )
 
     if args.stage in {"scrape", "all"}:
         written = scrape_top_flight_leagues(min_start_year=args.min_start_year)
@@ -88,6 +94,19 @@ def main() -> None:
         )
         for summary in summaries:
             print_split_summary(summary)
+
+    if args.stage in {"modeldata", "all"}:
+        variants = [False, True] if args.write_both_variants else [args.include_odds]
+        summaries = build_modeling_dataset_variants(
+            splits_dir=Path("data") / "splits",
+            modeling_dir=Path("data") / "modeling",
+            cutoff_date=args.split_cutoff_date,
+            include_odds_variants=variants,
+            add_recent_form_features=args.add_recent_form_features,
+            recent_form_window=args.recent_form_window,
+        )
+        for summary in summaries:
+            print_modeling_summary(summary)
 
 
 if __name__ == "__main__":

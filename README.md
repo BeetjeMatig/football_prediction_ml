@@ -10,11 +10,12 @@ Scrapes top-flight league CSVs from football-data.co.uk and preprocesses them in
 
 ## Current Scope
 
-The project currently supports three stages:
+The project currently supports four stages:
 
 - Scraping raw top-flight league CSV data from football-data.co.uk.
 - Preprocessing raw CSVs into cleaned datasets, with optional betting odds columns and optional recent-form features.
 - Combining processed datasets and splitting them into train/test sets by date.
+- Building leakage-safe modeling datasets from those train/test splits.
 
 Current preprocessing capabilities:
 
@@ -77,6 +78,12 @@ Create a date-based split from processed data:
 python main.py --stage split --add-recent-form-features --split-cutoff-date 2024-08-01
 ```
 
+Create leakage-safe modeling datasets from an existing split:
+
+```bash
+python main.py --stage modeldata --add-recent-form-features --split-cutoff-date 2024-08-01
+```
+
 Processed output directories currently follow this pattern:
 
 - `data/processed/base`
@@ -90,6 +97,17 @@ Date-based split outputs are written under:
 
 - `data/splits/date_YYYY-MM-DD/<variant>/train.csv`
 - `data/splits/date_YYYY-MM-DD/<variant>/test.csv`
+
+Modeling datasets are written under:
+
+- `data/modeling/date_YYYY-MM-DD/<variant>/X_train.csv`
+- `data/modeling/date_YYYY-MM-DD/<variant>/y_train.csv`
+- `data/modeling/date_YYYY-MM-DD/<variant>/X_test.csv`
+- `data/modeling/date_YYYY-MM-DD/<variant>/y_test.csv`
+- `data/modeling/date_YYYY-MM-DD/<variant>/train_metadata.csv`
+- `data/modeling/date_YYYY-MM-DD/<variant>/test_metadata.csv`
+
+The modeling stage is independent of how many years or seasons were included upstream. It works from whatever rows exist in the selected split and filters columns by leakage rules rather than by hard-coded seasons.
 
 ## Train/Test Split Strategy
 
@@ -113,6 +131,24 @@ Example:
 
 This is now the default split strategy for the repository's split stage and should remain the default for any future model training pipeline.
 
+## Modeling Dataset Strategy
+
+The modeling dataset builder removes columns that would leak information from the match being predicted.
+
+Examples of excluded columns:
+
+- full-time goals
+- half-time goals and half-time result
+- current-match shots, corners, and cards
+
+Examples of retained columns:
+
+- division, teams, and date in separate metadata files
+- rolling recent-form features
+- optional market odds columns when that variant is selected
+
+This stage does not assume a fixed set of seasons. It uses whatever train/test rows are present in the selected split directory.
+
 ## Rate Limiting
 
 The scraper waits `6` seconds between requests and sends a polite User-Agent header.
@@ -123,6 +159,7 @@ The scraper waits `6` seconds between requests and sends a polite User-Agent hea
 - Recent-form features are currently computed within each CSV file separately rather than across a full multi-season team history.
 - Only a subset of market-level betting odds columns are standardized into the current schema.
 - The current train/test split combines processed files and splits by cutoff date, but model training itself is not implemented yet.
+- Cross-season recent-form continuity is still not implemented; recent-form features currently reset at file boundaries.
 
 ## Current Structure
 
