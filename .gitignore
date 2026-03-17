@@ -1,3 +1,5 @@
+# Python.gitignore template
+# Created by https://www.toptal.com/developers/gitignore/api/python
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
@@ -181,6 +183,11 @@ cython_debug/
 # Learn more at https://abstra.io/docs
 .abstra/
 
+# Project data outputs — keep folders via .gitkeep, ignore all actual data files
+data/**
+!data/**/
+!data/**/.gitkeep
+
 # Visual Studio Code
 #  Visual Studio Code specific template is maintained in a separate VisualStudioCode.gitignore 
 #  that can be found at https://github.com/github/gitignore/blob/main/Global/VisualStudioCode.gitignore
@@ -205,3 +212,9 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Claude Code 
+# Claude Code is an AI coding assistant. `respect_gitignore' tells Claude Code to respect the project's .gitignore file, 
+# ensuring that ignored files are not accessed or processed by the AI assistant. This is important for maintaining privacy
+# and security of sensitive data. Refer to https://code.claude.com/docs/en/settings#excluding-sensitive-files
+CLAUDE.md
