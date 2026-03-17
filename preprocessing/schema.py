@@ -97,14 +97,30 @@ COLUMN_SCHEMA: Dict[str, ColumnSpec] = {
         "match_stats",
         False,
     ),
-    "home_red_cards": ColumnSpec("home_red_cards", {"HR"}, "Int64", "match_stats", False),
-    "away_red_cards": ColumnSpec("away_red_cards", {"AR"}, "Int64", "match_stats", False),
-    "odds_max_home": ColumnSpec("odds_max_home", {"MaxH"}, "float64", "odds_1x2", False),
-    "odds_max_draw": ColumnSpec("odds_max_draw", {"MaxD"}, "float64", "odds_1x2", False),
-    "odds_max_away": ColumnSpec("odds_max_away", {"MaxA"}, "float64", "odds_1x2", False),
-    "odds_avg_home": ColumnSpec("odds_avg_home", {"AvgH"}, "float64", "odds_1x2", False),
-    "odds_avg_draw": ColumnSpec("odds_avg_draw", {"AvgD"}, "float64", "odds_1x2", False),
-    "odds_avg_away": ColumnSpec("odds_avg_away", {"AvgA"}, "float64", "odds_1x2", False),
+    "home_red_cards": ColumnSpec(
+        "home_red_cards", {"HR"}, "Int64", "match_stats", False
+    ),
+    "away_red_cards": ColumnSpec(
+        "away_red_cards", {"AR"}, "Int64", "match_stats", False
+    ),
+    "odds_max_home": ColumnSpec(
+        "odds_max_home", {"MaxH"}, "float64", "odds_1x2", False
+    ),
+    "odds_max_draw": ColumnSpec(
+        "odds_max_draw", {"MaxD"}, "float64", "odds_1x2", False
+    ),
+    "odds_max_away": ColumnSpec(
+        "odds_max_away", {"MaxA"}, "float64", "odds_1x2", False
+    ),
+    "odds_avg_home": ColumnSpec(
+        "odds_avg_home", {"AvgH"}, "float64", "odds_1x2", False
+    ),
+    "odds_avg_draw": ColumnSpec(
+        "odds_avg_draw", {"AvgD"}, "float64", "odds_1x2", False
+    ),
+    "odds_avg_away": ColumnSpec(
+        "odds_avg_away", {"AvgA"}, "float64", "odds_1x2", False
+    ),
 }
 
 
