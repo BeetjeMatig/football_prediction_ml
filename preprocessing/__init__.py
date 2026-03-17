@@ -8,8 +8,14 @@ from .schema import (
     normalize_column_name,
     normalize_columns,
 )
+from .cleaner import CleaningResult, clean_all, clean_dataframe, clean_file, print_cleaning_report
 from .selection import select_output_columns
-from .validator import ValidationResult, print_validation_report, validate_all, validate_file
+from .validator import (
+    ValidationResult,
+    print_validation_report,
+    validate_all,
+    validate_file,
+)
 
 __all__ = [
     "COLUMN_SCHEMA",
@@ -18,6 +24,11 @@ __all__ = [
     "get_output_columns",
     "normalize_column_name",
     "normalize_columns",
+    "CleaningResult",
+    "clean_dataframe",
+    "clean_file",
+    "clean_all",
+    "print_cleaning_report",
     "select_output_columns",
     "ValidationResult",
     "validate_file",

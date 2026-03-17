@@ -8,12 +8,7 @@ from typing import Dict, List, Set
 
 import pandas as pd
 
-from .schema import (
-    COLUMN_SCHEMA,
-    ODDS_GROUPS,
-    REQUIRED_COLUMNS,
-    normalize_columns,
-)
+from .schema import COLUMN_SCHEMA, ODDS_GROUPS, REQUIRED_COLUMNS, normalize_columns
 
 
 @dataclass
@@ -41,7 +36,9 @@ class ValidationResult:
             lines.append(f"  Group '{group}': {mark}")
 
         if self.unknown_columns:
-            lines.append(f"  Unknown columns ({len(self.unknown_columns)}): {', '.join(self.unknown_columns[:10])}")
+            lines.append(
+                f"  Unknown columns ({len(self.unknown_columns)}): {', '.join(self.unknown_columns[:10])}"
+            )
 
         return "\n".join(lines)
 
@@ -99,10 +96,9 @@ def print_validation_report(results: List[ValidationResult]) -> None:
 
     invalid = [r for r in results if not r.is_valid]
     odds_missing = [
-        r for r in results
-        if r.is_valid and not any(
-            r.available_groups.get(g, False) for g in ODDS_GROUPS
-        )
+        r
+        for r in results
+        if r.is_valid and not any(r.available_groups.get(g, False) for g in ODDS_GROUPS)
     ]
 
     print(f"=== Validation Report: {len(results)} files ===")
