@@ -6,9 +6,15 @@ import argparse
 from pathlib import Path
 
 from model.pipeline import (
+    build_baseline_metrics_report,
+    freeze_model_variants,
     predict_match_outcome,
+    print_baseline_report_summary,
+    print_freeze_summary,
     print_prediction_summary,
+    print_smoke_test_summary,
     print_train_summary,
+    run_prediction_smoke_test,
     train_model_variants,
 )
 from preprocessing.modeling import (
@@ -35,6 +41,9 @@ def main() -> None:
             "split",
             "modeldata",
             "train",
+            "freeze",
+            "report",
+            "smoke",
             "predict",
             "all",
         ],
@@ -107,14 +116,21 @@ def main() -> None:
             "Can be repeated, e.g. --feature-override odds_home_win=1.9"
         ),
     )
+    parser.add_argument(
+        "--freeze-label",
+        type=str,
+        default="official",
+        help="For freeze stage: label used under data/models/frozen/<label>/...",
+    )
     args = parser.parse_args()
 
     if (
-        args.stage in {"split", "modeldata", "train", "predict", "all"}
+        args.stage
+        in {"split", "modeldata", "train", "freeze", "report", "smoke", "predict", "all"}
         and not args.split_cutoff_date
     ):
         parser.error(
-            "--split-cutoff-date is required when --stage is 'split', 'modeldata', 'train', 'predict', or 'all'."
+            "--split-cutoff-date is required when --stage is 'split', 'modeldata', 'train', 'freeze', 'report', 'smoke', 'predict', or 'all'."
         )
 
     if args.stage == "predict":
@@ -187,6 +203,44 @@ def main() -> None:
         )
         for summary in summaries:
             print_train_summary(summary)
+
+    if args.stage in {"freeze", "all"}:
+        variants = [False, True] if args.write_both_variants else [args.include_odds]
+        summaries = freeze_model_variants(
+            models_dir=Path("data") / "models",
+            cutoff_date=args.split_cutoff_date,
+            include_odds_variants=variants,
+            add_recent_form_features=args.add_recent_form_features,
+            recent_form_window=args.recent_form_window,
+            freeze_label=args.freeze_label,
+        )
+        for summary in summaries:
+            print_freeze_summary(summary)
+
+    if args.stage in {"report", "all"}:
+        variants = [False, True] if args.write_both_variants else [args.include_odds]
+        summary = build_baseline_metrics_report(
+            models_dir=Path("data") / "models",
+            cutoff_date=args.split_cutoff_date,
+            include_odds_variants=variants,
+            add_recent_form_features=args.add_recent_form_features,
+            recent_form_window=args.recent_form_window,
+        )
+        print_baseline_report_summary(summary)
+
+    if args.stage in {"smoke", "all"}:
+        summary = run_prediction_smoke_test(
+            splits_dir=Path("data") / "splits",
+            models_dir=Path("data") / "models",
+            cutoff_date=args.split_cutoff_date,
+            include_odds=args.include_odds,
+            add_recent_form_features=args.add_recent_form_features,
+            recent_form_window=args.recent_form_window,
+            division=args.division or "E0",
+            home_team=args.home_team or "Arsenal",
+            away_team=args.away_team or "Chelsea",
+        )
+        print_smoke_test_summary(summary)
 
     if args.stage == "predict":
         summary = predict_match_outcome(

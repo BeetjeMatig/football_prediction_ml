@@ -10,13 +10,16 @@ Scrapes top-flight league CSVs from football-data.co.uk and preprocesses them in
 
 ## Current Scope
 
-The project currently supports six stages:
+The project currently supports nine stages:
 
 - Scraping raw top-flight league CSV data from football-data.co.uk.
 - Preprocessing raw CSVs into cleaned datasets, with optional betting odds columns and optional recent-form features.
 - Combining processed datasets and splitting them into train/test sets by date.
 - Building leakage-safe modeling datasets from those train/test splits.
 - Training candidate classification models and selecting the best by test log loss.
+- Freezing trained model artifacts into a named official bundle.
+- Building a consolidated baseline metrics report from trained outputs.
+- Running a prediction smoke test to confirm stable prediction behavior.
 - Predicting a future matchup from team histories, including outcome probabilities and expected goals, with optional manual feature overrides for scenario testing.
 
 Current preprocessing capabilities:
@@ -95,6 +98,24 @@ Train candidate models and save the best artifact:
 python main.py --stage train --add-recent-form-features --split-cutoff-date 2024-08-01
 ```
 
+Freeze trained artifacts as an official bundle:
+
+```bash
+python main.py --stage freeze --write-both-variants --add-recent-form-features --split-cutoff-date 2024-08-01 --freeze-label official
+```
+
+Build consolidated baseline metrics report:
+
+```bash
+python main.py --stage report --write-both-variants --add-recent-form-features --split-cutoff-date 2024-08-01
+```
+
+Run prediction smoke test:
+
+```bash
+python main.py --stage smoke --include-odds --add-recent-form-features --split-cutoff-date 2024-08-01
+```
+
 Predict one matchup from historical team form:
 
 ```bash
@@ -137,6 +158,14 @@ Trained model outputs are written under:
 - `data/models/date_YYYY-MM-DD/<variant>/goal_metrics.csv`
 - `data/models/date_YYYY-MM-DD/<variant>/test_predictions.csv`
 - `data/models/date_YYYY-MM-DD/<variant>/artifact_meta.json`
+
+Frozen model bundles are written under:
+
+- `data/models/frozen/<freeze_label>/date_YYYY-MM-DD/<variant>/...`
+
+Baseline report output:
+
+- `data/models/date_YYYY-MM-DD/baseline_metrics.json`
 
 The modeling stage is independent of how many years or seasons were included upstream. It works from whatever rows exist in the selected split and filters columns by leakage rules rather than by hard-coded seasons.
 

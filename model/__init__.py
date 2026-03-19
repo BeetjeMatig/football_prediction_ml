@@ -1,21 +1,41 @@
 """Model package for training and match outcome prediction."""
 
 from .pipeline import (
+    BaselineReportSummary,
+    FreezeRunSummary,
     PredictionSummary,
+    SmokeTestSummary,
     TrainRunSummary,
+    build_baseline_metrics_report,
+    freeze_model_variant,
+    freeze_model_variants,
     predict_match_outcome,
+    print_baseline_report_summary,
+    print_freeze_summary,
     print_prediction_summary,
+    print_smoke_test_summary,
     print_train_summary,
+    run_prediction_smoke_test,
     train_model_variant,
     train_model_variants,
 )
 
 __all__ = [
     "TrainRunSummary",
+    "FreezeRunSummary",
+    "BaselineReportSummary",
+    "SmokeTestSummary",
     "PredictionSummary",
     "train_model_variant",
     "train_model_variants",
+    "freeze_model_variant",
+    "freeze_model_variants",
+    "build_baseline_metrics_report",
+    "run_prediction_smoke_test",
     "predict_match_outcome",
     "print_train_summary",
+    "print_freeze_summary",
+    "print_baseline_report_summary",
+    "print_smoke_test_summary",
     "print_prediction_summary",
 ]

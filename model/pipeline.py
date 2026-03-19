@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import math
 import pickle
+import shutil
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -84,6 +85,50 @@ class TrainRunSummary:
 
 
 @dataclass
+class FreezeRunSummary:
+    """Summary for freezing one trained variant artifact bundle."""
+
+    variant_name: str
+    source_dir: Path
+    frozen_dir: Path
+    freeze_label: str
+
+    def summary(self) -> str:
+        return (
+            f"variant={self.variant_name}, freeze_label={self.freeze_label}, "
+            f"source_dir={self.source_dir}, frozen_dir={self.frozen_dir}"
+        )
+
+
+@dataclass
+class BaselineReportSummary:
+    """Summary for a consolidated baseline metrics report."""
+
+    cutoff_date: str
+    output_path: Path
+    variants_included: int
+
+    def summary(self) -> str:
+        return (
+            f"cutoff_date={self.cutoff_date}, variants={self.variants_included}, "
+            f"output={self.output_path}"
+        )
+
+
+@dataclass
+class SmokeTestSummary:
+    """Summary for model prediction smoke test."""
+
+    variant_name: str
+    passed: bool
+    details: str
+
+    def summary(self) -> str:
+        status = "passed" if self.passed else "failed"
+        return f"variant={self.variant_name}, status={status}, details={self.details}"
+
+
+@dataclass
 class PredictionSummary:
     """Summary for a one-off match outcome prediction."""
 
@@ -152,6 +197,22 @@ def _get_models_variant_dir(
         recent_form_window=recent_form_window,
     )
     return models_dir / f"date_{cutoff_date}" / variant_name
+
+
+def _get_frozen_variant_dir(
+    models_dir: Path,
+    cutoff_date: str,
+    include_odds: bool,
+    add_recent_form_features: bool,
+    recent_form_window: int,
+    freeze_label: str,
+) -> Path:
+    variant_name = _get_variant_name(
+        include_odds=include_odds,
+        add_recent_form_features=add_recent_form_features,
+        recent_form_window=recent_form_window,
+    )
+    return models_dir / "frozen" / freeze_label / f"date_{cutoff_date}" / variant_name
 
 
 def _load_modeling_data(
@@ -478,6 +539,223 @@ def train_model_variants(
         )
         for include_odds in include_odds_variants
     ]
+
+
+def freeze_model_variant(
+    models_dir: Path,
+    cutoff_date: str,
+    include_odds: bool,
+    add_recent_form_features: bool = False,
+    recent_form_window: int = 5,
+    freeze_label: str = "official",
+) -> FreezeRunSummary:
+    """Copy one trained variant artifact bundle to a frozen release directory."""
+
+    variant_name = _get_variant_name(
+        include_odds=include_odds,
+        add_recent_form_features=add_recent_form_features,
+        recent_form_window=recent_form_window,
+    )
+    source_dir = _get_models_variant_dir(
+        models_dir=models_dir,
+        cutoff_date=cutoff_date,
+        include_odds=include_odds,
+        add_recent_form_features=add_recent_form_features,
+        recent_form_window=recent_form_window,
+    )
+    if not (source_dir / "best_model.pkl").exists():
+        raise FileNotFoundError(
+            f"No trained model found in {source_dir}. Run --stage train first."
+        )
+
+    frozen_dir = _get_frozen_variant_dir(
+        models_dir=models_dir,
+        cutoff_date=cutoff_date,
+        include_odds=include_odds,
+        add_recent_form_features=add_recent_form_features,
+        recent_form_window=recent_form_window,
+        freeze_label=freeze_label,
+    )
+    frozen_dir.mkdir(parents=True, exist_ok=True)
+
+    for filename in [
+        "best_model.pkl",
+        "metrics.csv",
+        "goal_metrics.csv",
+        "test_predictions.csv",
+        "artifact_meta.json",
+    ]:
+        source_path = source_dir / filename
+        if source_path.exists():
+            shutil.copy2(source_path, frozen_dir / filename)
+
+    manifest = {
+        "freeze_label": freeze_label,
+        "cutoff_date": cutoff_date,
+        "variant_name": variant_name,
+        "source_dir": str(source_dir),
+        "frozen_dir": str(frozen_dir),
+        "frozen_at_utc": datetime.utcnow().isoformat(timespec="seconds"),
+    }
+    with (frozen_dir / "freeze_manifest.json").open("w", encoding="utf-8") as handle:
+        json.dump(manifest, handle, indent=2)
+
+    return FreezeRunSummary(
+        variant_name=variant_name,
+        source_dir=source_dir,
+        frozen_dir=frozen_dir,
+        freeze_label=freeze_label,
+    )
+
+
+def freeze_model_variants(
+    models_dir: Path,
+    cutoff_date: str,
+    include_odds_variants: List[bool],
+    add_recent_form_features: bool = False,
+    recent_form_window: int = 5,
+    freeze_label: str = "official",
+) -> List[FreezeRunSummary]:
+    """Freeze model artifacts for multiple selected variants."""
+
+    return [
+        freeze_model_variant(
+            models_dir=models_dir,
+            cutoff_date=cutoff_date,
+            include_odds=include_odds,
+            add_recent_form_features=add_recent_form_features,
+            recent_form_window=recent_form_window,
+            freeze_label=freeze_label,
+        )
+        for include_odds in include_odds_variants
+    ]
+
+
+def build_baseline_metrics_report(
+    models_dir: Path,
+    cutoff_date: str,
+    include_odds_variants: List[bool],
+    add_recent_form_features: bool = False,
+    recent_form_window: int = 5,
+) -> BaselineReportSummary:
+    """Create a consolidated baseline metrics report across selected variants."""
+
+    report_rows: List[Dict[str, Any]] = []
+    for include_odds in include_odds_variants:
+        variant_name = _get_variant_name(
+            include_odds=include_odds,
+            add_recent_form_features=add_recent_form_features,
+            recent_form_window=recent_form_window,
+        )
+        variant_dir = _get_models_variant_dir(
+            models_dir=models_dir,
+            cutoff_date=cutoff_date,
+            include_odds=include_odds,
+            add_recent_form_features=add_recent_form_features,
+            recent_form_window=recent_form_window,
+        )
+        metrics_path = variant_dir / "metrics.csv"
+        goals_path = variant_dir / "goal_metrics.csv"
+        meta_path = variant_dir / "artifact_meta.json"
+        if not metrics_path.exists() or not goals_path.exists() or not meta_path.exists():
+            raise FileNotFoundError(
+                f"Missing metrics files for {variant_name} in {variant_dir}. Run --stage train first."
+            )
+
+        metrics_df = pd.read_csv(metrics_path)
+        goal_df = pd.read_csv(goals_path)
+        with meta_path.open("r", encoding="utf-8") as handle:
+            meta = json.load(handle)
+
+        best_row = metrics_df.sort_values("log_loss").iloc[0]
+        home_goals_mae = pd.to_numeric(goal_df["home_goals_mae"], errors="coerce").iloc[0]
+        away_goals_mae = pd.to_numeric(goal_df["away_goals_mae"], errors="coerce").iloc[0]
+        report_rows.append(
+            {
+                "variant_name": variant_name,
+                "best_model": meta.get("model_name", str(best_row["model"])),
+                "log_loss": float(best_row["log_loss"]),
+                "accuracy": float(best_row["accuracy"]),
+                "macro_f1": float(best_row["macro_f1"]),
+                "home_goals_mae": float(home_goals_mae),
+                "away_goals_mae": float(away_goals_mae),
+                "trained_at_utc": meta.get("trained_at_utc"),
+            }
+        )
+
+    output_path = models_dir / f"date_{cutoff_date}" / "baseline_metrics.json"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("w", encoding="utf-8") as handle:
+        json.dump(
+            {
+                "cutoff_date": cutoff_date,
+                "generated_at_utc": datetime.utcnow().isoformat(timespec="seconds"),
+                "rows": report_rows,
+            },
+            handle,
+            indent=2,
+        )
+
+    return BaselineReportSummary(
+        cutoff_date=cutoff_date,
+        output_path=output_path,
+        variants_included=len(report_rows),
+    )
+
+
+def run_prediction_smoke_test(
+    splits_dir: Path,
+    models_dir: Path,
+    cutoff_date: str,
+    include_odds: bool,
+    add_recent_form_features: bool = False,
+    recent_form_window: int = 5,
+    division: str = "E0",
+    home_team: str = "Arsenal",
+    away_team: str = "Chelsea",
+) -> SmokeTestSummary:
+    """Run a minimal prediction smoke test and validate output sanity."""
+
+    prediction = predict_match_outcome(
+        splits_dir=splits_dir,
+        models_dir=models_dir,
+        cutoff_date=cutoff_date,
+        include_odds=include_odds,
+        division=division,
+        home_team=home_team,
+        away_team=away_team,
+        add_recent_form_features=add_recent_form_features,
+        recent_form_window=recent_form_window,
+    )
+    probability_sum = (
+        prediction.probability_home_win
+        + prediction.probability_draw
+        + prediction.probability_away_win
+    )
+    probs = [
+        prediction.probability_home_win,
+        prediction.probability_draw,
+        prediction.probability_away_win,
+    ]
+    valid_probs = all(0.0 <= value <= 1.0 for value in probs)
+    valid_sum = abs(probability_sum - 1.0) < 1e-6
+    valid_goals = (
+        prediction.expected_home_goals == prediction.expected_home_goals
+        and prediction.expected_away_goals == prediction.expected_away_goals
+        and prediction.expected_home_goals >= 0.0
+        and prediction.expected_away_goals >= 0.0
+    )
+    passed = valid_probs and valid_sum and valid_goals
+    details = (
+        f"prob_sum={probability_sum:.6f}, valid_probs={valid_probs}, "
+        f"valid_goals={valid_goals}, predicted={prediction.predicted_outcome}"
+    )
+    variant_name = _get_variant_name(
+        include_odds=include_odds,
+        add_recent_form_features=add_recent_form_features,
+        recent_form_window=recent_form_window,
+    )
+    return SmokeTestSummary(variant_name=variant_name, passed=passed, details=details)
 
 
 def _load_model_artifact(model_path: Path) -> Dict[str, Any]:
@@ -859,6 +1137,24 @@ def predict_match_outcome(
 
 def print_train_summary(summary: TrainRunSummary) -> None:
     """Print a compact model training summary."""
+
+    print(summary.summary())
+
+
+def print_freeze_summary(summary: FreezeRunSummary) -> None:
+    """Print a compact freeze summary."""
+
+    print(summary.summary())
+
+
+def print_baseline_report_summary(summary: BaselineReportSummary) -> None:
+    """Print a compact baseline-report summary."""
+
+    print(summary.summary())
+
+
+def print_smoke_test_summary(summary: SmokeTestSummary) -> None:
+    """Print a compact smoke-test summary."""
 
     print(summary.summary())
 
