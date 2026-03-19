@@ -9,7 +9,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import List
 
-from model.utils import get_models_variant_dir, get_frozen_variant_dir, get_variant_name
+from model.utils import get_frozen_variant_dir, get_models_variant_dir, get_variant_name
 
 
 @dataclass

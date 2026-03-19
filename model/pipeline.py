@@ -9,8 +9,8 @@ from model.prediction import (
     EVENT_STAT_EFFECTS,
     LABEL_TO_INT,
     OVERRIDE_ALIASES,
-    PredictionSummary,
     STAT_OVERRIDE_KEYS,
+    PredictionSummary,
     predict_match_outcome,
 )
 from model.printing import (
@@ -20,10 +20,7 @@ from model.printing import (
     print_smoke_test_summary,
     print_train_summary,
 )
-from model.reporting import (
-    BaselineReportSummary,
-    build_baseline_metrics_report,
-)
+from model.reporting import BaselineReportSummary, build_baseline_metrics_report
 from model.testing import SmokeTestSummary, run_prediction_smoke_test
 from model.training import (
     TrainRunSummary,
