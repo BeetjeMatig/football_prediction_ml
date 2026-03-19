@@ -29,7 +29,15 @@ def main() -> None:
     )
     parser.add_argument(
         "--stage",
-        choices=["scrape", "preprocess", "split", "modeldata", "train", "predict", "all"],
+        choices=[
+            "scrape",
+            "preprocess",
+            "split",
+            "modeldata",
+            "train",
+            "predict",
+            "all",
+        ],
         default="scrape",
         help="Pipeline stage to run.",
     )
@@ -101,7 +109,10 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    if args.stage in {"split", "modeldata", "train", "predict", "all"} and not args.split_cutoff_date:
+    if (
+        args.stage in {"split", "modeldata", "train", "predict", "all"}
+        and not args.split_cutoff_date
+    ):
         parser.error(
             "--split-cutoff-date is required when --stage is 'split', 'modeldata', 'train', 'predict', or 'all'."
         )
@@ -167,6 +178,7 @@ def main() -> None:
         variants = [False, True] if args.write_both_variants else [args.include_odds]
         summaries = train_model_variants(
             modeling_dir=Path("data") / "modeling",
+            splits_dir=Path("data") / "splits",
             models_dir=Path("data") / "models",
             cutoff_date=args.split_cutoff_date,
             include_odds_variants=variants,

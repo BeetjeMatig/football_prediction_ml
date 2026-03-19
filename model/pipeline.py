@@ -11,8 +11,9 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
 from sklearn.ensemble import HistGradientBoostingClassifier
+from sklearn.ensemble import HistGradientBoostingRegressor
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score, f1_score, log_loss
+from sklearn.metrics import accuracy_score, f1_score, log_loss, mean_absolute_error
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
@@ -65,6 +66,8 @@ class PredictionSummary:
     probability_home_win: float
     probability_draw: float
     probability_away_win: float
+    expected_home_goals: float
+    expected_away_goals: float
 
     def summary(self) -> str:
         return (
@@ -73,7 +76,9 @@ class PredictionSummary:
             f"predicted={self.predicted_outcome}, "
             f"P(H)={self.probability_home_win:.3f}, "
             f"P(D)={self.probability_draw:.3f}, "
-            f"P(A)={self.probability_away_win:.3f}"
+            f"P(A)={self.probability_away_win:.3f}, "
+            f"E[home_goals]={self.expected_home_goals:.2f}, "
+            f"E[away_goals]={self.expected_away_goals:.2f}"
         )
 
 
@@ -121,14 +126,22 @@ def _get_models_variant_dir(
 
 def _load_modeling_data(
     input_dir: Path,
-) -> Tuple[pd.DataFrame, pd.Series, pd.DataFrame, pd.Series, pd.DataFrame]:
+) -> Tuple[pd.DataFrame, pd.Series, pd.DataFrame, pd.Series, pd.DataFrame, pd.DataFrame]:
     x_train_path = input_dir / "X_train.csv"
     y_train_path = input_dir / "y_train.csv"
     x_test_path = input_dir / "X_test.csv"
     y_test_path = input_dir / "y_test.csv"
+    train_meta_path = input_dir / "train_metadata.csv"
     test_meta_path = input_dir / "test_metadata.csv"
 
-    required = [x_train_path, y_train_path, x_test_path, y_test_path, test_meta_path]
+    required = [
+        x_train_path,
+        y_train_path,
+        x_test_path,
+        y_test_path,
+        train_meta_path,
+        test_meta_path,
+    ]
     missing = [str(path) for path in required if not path.exists()]
     if missing:
         raise FileNotFoundError(
@@ -140,6 +153,7 @@ def _load_modeling_data(
     y_train = pd.read_csv(y_train_path)["target_result"]
     x_test = pd.read_csv(x_test_path)
     y_test = pd.read_csv(y_test_path)["target_result"]
+    train_meta = pd.read_csv(train_meta_path)
     test_meta = pd.read_csv(test_meta_path)
 
     y_train_encoded = y_train.map(LABEL_TO_INT)
@@ -147,7 +161,88 @@ def _load_modeling_data(
     if y_train_encoded.isna().any() or y_test_encoded.isna().any():
         raise ValueError("Unexpected target labels found. Expected only H, D, A.")
 
-    return x_train, y_train_encoded.astype("int64"), x_test, y_test_encoded.astype("int64"), test_meta
+    return (
+        x_train,
+        y_train_encoded.astype("int64"),
+        x_test,
+        y_test_encoded.astype("int64"),
+        train_meta,
+        test_meta,
+    )
+
+
+def _load_split_targets(
+    splits_dir: Path,
+    cutoff_date: str,
+    include_odds: bool,
+    add_recent_form_features: bool,
+    recent_form_window: int,
+    train_metadata: pd.DataFrame,
+    test_metadata: pd.DataFrame,
+) -> Tuple[pd.Series, pd.Series, pd.Series, pd.Series]:
+    """Load and align home/away goal targets to modeling train/test row order."""
+
+    variant_name = _get_variant_name(
+        include_odds=include_odds,
+        add_recent_form_features=add_recent_form_features,
+        recent_form_window=recent_form_window,
+    )
+    split_variant_dir = splits_dir / f"date_{cutoff_date}" / variant_name
+    train_split_path = split_variant_dir / "train.csv"
+    test_split_path = split_variant_dir / "test.csv"
+    if not train_split_path.exists() or not test_split_path.exists():
+        raise FileNotFoundError(
+            f"Split files not found in {split_variant_dir}. Run --stage split first."
+        )
+
+    train_split = pd.read_csv(train_split_path)
+    test_split = pd.read_csv(test_split_path)
+
+    key_columns = ["date", "div", "home_team", "away_team"]
+    target_columns = ["full_time_home_goals", "full_time_away_goals"]
+
+    merged_train = train_metadata.merge(
+        train_split[key_columns + target_columns], on=key_columns, how="left"
+    )
+    merged_test = test_metadata.merge(
+        test_split[key_columns + target_columns], on=key_columns, how="left"
+    )
+
+    if merged_train[target_columns].isna().any().any() or merged_test[target_columns].isna().any().any():
+        raise ValueError(
+            "Could not align split targets with modeling metadata for goal regression."
+        )
+
+    return (
+        merged_train["full_time_home_goals"],
+        merged_train["full_time_away_goals"],
+        merged_test["full_time_home_goals"],
+        merged_test["full_time_away_goals"],
+    )
+
+
+def _fit_goal_regressors(
+    x_train: pd.DataFrame,
+    y_home_train: pd.Series,
+    y_away_train: pd.Series,
+) -> Tuple[HistGradientBoostingRegressor, HistGradientBoostingRegressor]:
+    """Fit goal expectation regressors for home and away goals."""
+
+    home_regressor = HistGradientBoostingRegressor(
+        learning_rate=0.05,
+        max_iter=400,
+        max_depth=6,
+        random_state=42,
+    )
+    away_regressor = HistGradientBoostingRegressor(
+        learning_rate=0.05,
+        max_iter=400,
+        max_depth=6,
+        random_state=42,
+    )
+    home_regressor.fit(x_train, y_home_train)
+    away_regressor.fit(x_train, y_away_train)
+    return home_regressor, away_regressor
 
 
 def _build_candidate_models() -> Dict[str, Any]:
@@ -192,6 +287,7 @@ def _evaluate_model(
 
 def train_model_variant(
     modeling_dir: Path,
+    splits_dir: Path,
     models_dir: Path,
     cutoff_date: str,
     include_odds: bool,
@@ -212,7 +308,19 @@ def train_model_variant(
         add_recent_form_features=add_recent_form_features,
         recent_form_window=recent_form_window,
     )
-    x_train, y_train, x_test, y_test, test_metadata = _load_modeling_data(input_dir)
+    x_train, y_train, x_test, y_test, train_metadata, test_metadata = _load_modeling_data(
+        input_dir
+    )
+
+    y_home_train, y_away_train, y_home_test, y_away_test = _load_split_targets(
+        splits_dir=splits_dir,
+        cutoff_date=cutoff_date,
+        include_odds=include_odds,
+        add_recent_form_features=add_recent_form_features,
+        recent_form_window=recent_form_window,
+        train_metadata=train_metadata,
+        test_metadata=test_metadata,
+    )
 
     candidate_models = _build_candidate_models()
     evaluations: List[Dict[str, float | str]] = []
@@ -224,7 +332,9 @@ def train_model_variant(
         evaluations.append({"model": model_name, **metrics})
         fitted_models[model_name] = model
 
-    evaluation_df = pd.DataFrame(evaluations).sort_values("log_loss").reset_index(drop=True)
+    evaluation_df = (
+        pd.DataFrame(evaluations).sort_values("log_loss").reset_index(drop=True)
+    )
     best_model_name = str(evaluation_df.loc[0, "model"])
     best_model = fitted_models[best_model_name]
 
@@ -259,13 +369,39 @@ def train_model_variant(
         "model_name": best_model_name,
     }
 
+    evaluation_df.to_csv(model_output_dir / "metrics.csv", index=False)
+    prediction_df.to_csv(model_output_dir / "test_predictions.csv", index=False)
+
+    home_goal_regressor, away_goal_regressor = _fit_goal_regressors(
+        x_train=x_train,
+        y_home_train=y_home_train,
+        y_away_train=y_away_train,
+    )
+    home_goal_test_pred = home_goal_regressor.predict(x_test)
+    away_goal_test_pred = away_goal_regressor.predict(x_test)
+    goal_metrics = {
+        "home_goals_mae": float(mean_absolute_error(y_home_test, home_goal_test_pred)),
+        "away_goals_mae": float(mean_absolute_error(y_away_test, away_goal_test_pred)),
+    }
+    pd.DataFrame([goal_metrics]).to_csv(model_output_dir / "goal_metrics.csv", index=False)
+
+    artifact["home_goal_regressor"] = home_goal_regressor
+    artifact["away_goal_regressor"] = away_goal_regressor
+    artifact["goal_metrics"] = goal_metrics
+
+    artifact_meta = {
+        key: value
+        for key, value in artifact.items()
+        if key not in {"model", "home_goal_regressor", "away_goal_regressor"}
+    }
+
     with (model_output_dir / "best_model.pkl").open("wb") as handle:
         pickle.dump(artifact, handle)
 
-    evaluation_df.to_csv(model_output_dir / "metrics.csv", index=False)
-    prediction_df.to_csv(model_output_dir / "test_predictions.csv", index=False)
-    with (model_output_dir / "artifact_meta.json").open("w", encoding="utf-8") as handle:
-        json.dump({key: value for key, value in artifact.items() if key != "model"}, handle, indent=2)
+    with (model_output_dir / "artifact_meta.json").open(
+        "w", encoding="utf-8"
+    ) as handle:
+        json.dump(artifact_meta, handle, indent=2)
 
     return TrainRunSummary(
         include_odds=include_odds,
@@ -284,6 +420,7 @@ def train_model_variant(
 
 def train_model_variants(
     modeling_dir: Path,
+    splits_dir: Path,
     models_dir: Path,
     cutoff_date: str,
     include_odds_variants: List[bool],
@@ -295,6 +432,7 @@ def train_model_variants(
     return [
         train_model_variant(
             modeling_dir=modeling_dir,
+            splits_dir=splits_dir,
             models_dir=models_dir,
             cutoff_date=cutoff_date,
             include_odds=include_odds,
@@ -322,6 +460,7 @@ def _normalize_split_team_state_rows(
     team: str,
     division: str,
     as_of_date: Optional[pd.Timestamp],
+    recent_form_window: int,
 ) -> pd.DataFrame:
     if as_of_date is not None:
         filtered = df.loc[df["date"] <= as_of_date].copy()
@@ -336,19 +475,19 @@ def _normalize_split_team_state_rows(
     home = home.rename(
         columns={
             "home_matches_played_before_match": "matches_played_before_match",
-            "home_points_avg_last_5": "points_avg_last_5",
-            "home_goals_for_avg_last_5": "goals_for_avg_last_5",
-            "home_goals_against_avg_last_5": "goals_against_avg_last_5",
-            "home_goal_diff_avg_last_5": "goal_diff_avg_last_5",
+            f"home_points_avg_last_{recent_form_window}": "points_avg_last_5",
+            f"home_goals_for_avg_last_{recent_form_window}": "goals_for_avg_last_5",
+            f"home_goals_against_avg_last_{recent_form_window}": "goals_against_avg_last_5",
+            f"home_goal_diff_avg_last_{recent_form_window}": "goal_diff_avg_last_5",
         }
     )
     away = away.rename(
         columns={
             "away_matches_played_before_match": "matches_played_before_match",
-            "away_points_avg_last_5": "points_avg_last_5",
-            "away_goals_for_avg_last_5": "goals_for_avg_last_5",
-            "away_goals_against_avg_last_5": "goals_against_avg_last_5",
-            "away_goal_diff_avg_last_5": "goal_diff_avg_last_5",
+            f"away_points_avg_last_{recent_form_window}": "points_avg_last_5",
+            f"away_goals_for_avg_last_{recent_form_window}": "goals_for_avg_last_5",
+            f"away_goals_against_avg_last_{recent_form_window}": "goals_against_avg_last_5",
+            f"away_goal_diff_avg_last_{recent_form_window}": "goal_diff_avg_last_5",
         }
     )
 
@@ -378,6 +517,7 @@ def _estimate_team_state(
         team=team,
         division=division,
         as_of_date=timestamp,
+        recent_form_window=recent_form_window,
     )
 
     if rows.empty:
@@ -428,7 +568,9 @@ def _build_feature_row(
     row: Dict[str, float] = {}
     for column in feature_columns:
         if column == "time":
-            row[column] = float("nan") if kickoff_time_minutes is None else kickoff_time_minutes
+            row[column] = (
+                float("nan") if kickoff_time_minutes is None else kickoff_time_minutes
+            )
         elif column.startswith("home_"):
             row[column] = home_state.get(column.replace("home_", ""), float("nan"))
         elif column.startswith("away_"):
@@ -512,7 +654,9 @@ def predict_match_outcome(
             f"Split files not found in {split_variant_dir}. Run --stage split first."
         )
 
-    split_df = pd.concat([pd.read_csv(train_path), pd.read_csv(test_path)], ignore_index=True)
+    split_df = pd.concat(
+        [pd.read_csv(train_path), pd.read_csv(test_path)], ignore_index=True
+    )
     split_df["date"] = pd.to_datetime(split_df["date"], errors="coerce")
 
     home_state = _estimate_team_state(
@@ -539,6 +683,8 @@ def predict_match_outcome(
         for key, value in dict(artifact["feature_fill_values"]).items()
     }
     model: Any = artifact["model"]
+    home_goal_regressor: Optional[Any] = artifact.get("home_goal_regressor")
+    away_goal_regressor: Optional[Any] = artifact.get("away_goal_regressor")
 
     feature_row = _build_feature_row(
         feature_columns=feature_columns,
@@ -551,6 +697,11 @@ def predict_match_outcome(
 
     probabilities = model.predict_proba(feature_row)[0]
     predicted_int = int(probabilities.argmax())
+    expected_home_goals = float("nan")
+    expected_away_goals = float("nan")
+    if home_goal_regressor is not None and away_goal_regressor is not None:
+        expected_home_goals = float(home_goal_regressor.predict(feature_row)[0])
+        expected_away_goals = float(away_goal_regressor.predict(feature_row)[0])
 
     return PredictionSummary(
         variant_name=variant_name,
@@ -562,6 +713,8 @@ def predict_match_outcome(
         probability_home_win=float(probabilities[0]),
         probability_draw=float(probabilities[1]),
         probability_away_win=float(probabilities[2]),
+        expected_home_goals=expected_home_goals,
+        expected_away_goals=expected_away_goals,
     )
 
 

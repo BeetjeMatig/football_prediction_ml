@@ -17,7 +17,7 @@ The project currently supports six stages:
 - Combining processed datasets and splitting them into train/test sets by date.
 - Building leakage-safe modeling datasets from those train/test splits.
 - Training candidate classification models and selecting the best by test log loss.
-- Predicting a future matchup from team histories, with optional manual feature overrides for scenario testing.
+- Predicting a future matchup from team histories, including outcome probabilities and expected goals, with optional manual feature overrides for scenario testing.
 
 Current preprocessing capabilities:
 
@@ -134,6 +134,7 @@ Trained model outputs are written under:
 
 - `data/models/date_YYYY-MM-DD/<variant>/best_model.pkl`
 - `data/models/date_YYYY-MM-DD/<variant>/metrics.csv`
+- `data/models/date_YYYY-MM-DD/<variant>/goal_metrics.csv`
 - `data/models/date_YYYY-MM-DD/<variant>/test_predictions.csv`
 - `data/models/date_YYYY-MM-DD/<variant>/artifact_meta.json`
 
@@ -202,6 +203,11 @@ Model selection currently uses test-set log loss as the primary metric. Accuracy
 
 The prediction stage builds a pre-match feature row from each team's most recent known history in the chosen division and cutoff dataset.
 
+For each match query it returns:
+
+- Multiclass outcome probabilities: home win / draw / away win
+- Expected home goals and expected away goals (regression outputs)
+
 You can manually override any model feature using one or more `--feature-override feature=value` arguments to test what-if scenarios.
 
 Examples:
@@ -218,7 +224,6 @@ The scraper waits `6` seconds between requests and sends a polite User-Agent hea
 
 - football-data.co.uk may change its page structure or remove country/season links over time.
 - Only a subset of market-level betting odds columns are standardized into the current schema.
-- The current train/test split combines processed files and splits by cutoff date, but model training itself is not implemented yet.
 
 ## Current Structure
 
