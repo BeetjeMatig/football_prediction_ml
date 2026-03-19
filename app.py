@@ -9,6 +9,7 @@ import subprocess
 import sys
 import threading
 import time
+import traceback
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -17,6 +18,7 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
+from model.prediction import EVENT_STAT_BASELINES, EVENT_STAT_EFFECTS
 from scraper.config import COUNTRY_PAGE_ALLOWLIST, REQUEST_DELAY_SECONDS
 from scraper.discovery import (
     discover_country_pages,
@@ -34,6 +36,20 @@ from scraper.utils import (
 # Configure page
 st.set_page_config(page_title="Football Prediction", layout="wide")
 
+# Division code to country slug mapping
+DIV_TO_COUNTRY = {
+    "E0": "england",
+    "B1": "belgium",
+    "F1": "france",
+    "D1": "germany",
+    "G1": "greece",
+    "I1": "italy",
+    "N1": "netherlands",
+    "P1": "portugal",
+    "SC0": "scotland",
+    "SP1": "spain",
+    "T1": "turkey",
+}
 
 # Background scrape job store for this Streamlit server process.
 SCRAPE_JOBS = {}
@@ -146,16 +162,6 @@ def get_recent_stats(team, country, processed_data):
     return recent_stats
 
 
-def predict_match(home_team, away_team, model_data, processed_data):
-    """Get prediction for a match between home and away team."""
-    # This is simplified - use historical averages and test data for similar matchups
-    match_data = {
-        "home_team": home_team,
-        "away_team": away_team,
-    }
-    return match_data
-
-
 def get_team_raw_stats(team, country, processed_data):
     """Get baseline raw match stats for a team across available seasons."""
     baseline = {
@@ -209,19 +215,28 @@ def get_team_raw_stats(team, country, processed_data):
     }
 
 
-def compute_adjusted_xg(base_xg, selected_stats, baseline_stats):
-    """Convert stat changes into an adjusted expected goals value."""
-    effects = {
-        "shots": 0.05,
-        "shots_on_target": 0.12,
-        "corners": 0.03,
-        "yellow_cards": -0.04,
-        "red_cards": -0.35,
+def compute_adjusted_xg(base_xg, selected_stats, baseline_stats, side="home"):
+    """Convert stat changes into an adjusted expected goals value.
+
+    Uses the canonical effect weights from model.prediction.EVENT_STAT_EFFECTS.
+    The ``side`` parameter selects the home (index 0) or away (index 1) effect
+    component for each stat.
+    """
+    # Map short stat names used by the UI to the model's prefixed stat keys.
+    stat_key_map = {
+        "shots": f"{side}_shots",
+        "shots_on_target": f"{side}_shots_on_target",
+        "corners": f"{side}_corners",
+        "yellow_cards": f"{side}_yellow_cards",
+        "red_cards": f"{side}_red_cards",
     }
+    effect_index = 0 if side == "home" else 1
 
     adjusted = base_xg
-    for name, weight in effects.items():
-        adjusted += weight * (selected_stats[name] - baseline_stats[name])
+    for short_name, model_key in stat_key_map.items():
+        if model_key in EVENT_STAT_EFFECTS:
+            weight = EVENT_STAT_EFFECTS[model_key][effect_index]
+            adjusted += weight * (selected_stats[short_name] - baseline_stats[short_name])
 
     return float(np.clip(adjusted, 0.0, 5.0))
 
@@ -513,8 +528,8 @@ def _start_scrape_job(min_start_year, selected_countries, request_delay_seconds)
                     SCRAPE_JOBS[job_id]["status_line"] = (
                         "Scrape canceled" if canceled else "Scrape completed"
                     )
-        except Exception as exc:  # pragma: no cover - defensive UI path
-            _append_scrape_log(job_id, f"Error: {exc}")
+        except Exception:  # pragma: no cover - defensive UI path
+            _append_scrape_log(job_id, f"Error: {traceback.format_exc()}")
             _update_scrape_job(job_id, status="failed", status_line="Scrape failed")
 
     thread = threading.Thread(target=worker, daemon=True)
@@ -529,9 +544,9 @@ def get_season_from_date(date_str):
     month = date.month
     # Season starts in August
     if month >= 8:
-        return f"{year}-{year+1:02d}"[-2:]
+        return f"{year}-{str(year + 1)[-2:]}"
     else:
-        return f"{year-1}-{year:02d}"[-2:]
+        return f"{year - 1}-{str(year)[-2:]}"
 
 
 def get_unique_seasons(test_pred):
@@ -602,7 +617,14 @@ def get_league_standings(div, test_pred, season=None):
 st.title("⚽ Football Match Prediction")
 
 # Load data
-model_data, test_pred, processed_data = load_model_and_data()
+try:
+    model_data, test_pred, processed_data = load_model_and_data()
+except (FileNotFoundError, OSError, pickle.UnpicklingError) as exc:
+    st.error(
+        f"Could not load model or data files: {exc}\n\n"
+        "Run the training pipeline first (use the Train tab or `python main.py --stage all`)."
+    )
+    st.stop()
 
 # Create tabs
 tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(
@@ -631,22 +653,7 @@ with tab1:
         selected_team = st.selectbox("Select Team", teams)
 
     if selected_team:
-        # Map division to country
-        div_to_country = {
-            "E0": "england",
-            "B1": "belgium",
-            "F1": "france",
-            "D1": "germany",
-            "G1": "greece",
-            "I1": "italy",
-            "N1": "netherlands",
-            "P1": "portugal",
-            "SC0": "scotland",
-            "SP1": "spain",
-            "T1": "turkey",
-        }
-
-        country = div_to_country.get(selected_div, "")
+        country = DIV_TO_COUNTRY.get(selected_div, "")
         stats = get_recent_stats(selected_team, country, processed_data)
 
         st.subheader(f"📈 {selected_team} - Recent Form (Last 5 Matches)")
@@ -688,21 +695,7 @@ with tab2:
 
     # Show prediction if button was clicked
     if st.session_state.get("pred_show", False):
-        div_to_country = {
-            "E0": "england",
-            "B1": "belgium",
-            "F1": "france",
-            "D1": "germany",
-            "G1": "greece",
-            "I1": "italy",
-            "N1": "netherlands",
-            "P1": "portugal",
-            "SC0": "scotland",
-            "SP1": "spain",
-            "T1": "turkey",
-        }
-
-        country = div_to_country.get(pred_div, "")
+        country = DIV_TO_COUNTRY.get(pred_div, "")
 
         # Get stats
         home_stats = get_recent_stats(home_team, country, processed_data)
@@ -823,12 +816,13 @@ with tab2:
             base_xg=float(away_stats["Avg Goals For"]),
             selected_stats=away_selected,
             baseline_stats=away_raw_baseline,
+            side="away",
         )
 
         # Model reference probabilities.
         similar = test_pred[
             (test_pred["home_team"] == home_team)
-            | (test_pred["away_team"] == away_team)
+            & (test_pred["away_team"] == away_team)
         ]
 
         from scipy.stats import poisson
@@ -1034,13 +1028,13 @@ with tab4:
     if results_div != "All":
         display_data = display_data[display_data["div"] == results_div]
 
-    if accuracy_option == "Recent 20":
-        display_data = display_data.iloc[-20:]
-    elif accuracy_option == "Last 50":
-        display_data = display_data.iloc[-50:]
-
-    # Sort by date descending
+    # Sort by date descending before slicing so "Recent" means most recent by date.
     display_data = display_data.sort_values("date", ascending=False)
+
+    if accuracy_option == "Recent 20":
+        display_data = display_data.iloc[:20]
+    elif accuracy_option == "Last 50":
+        display_data = display_data.iloc[:50]
 
     # Display metrics
     correct = (display_data["actual_result"] == display_data["predicted_result"]).sum()

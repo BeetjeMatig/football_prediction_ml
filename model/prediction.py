@@ -11,13 +11,11 @@ import pandas as pd
 
 from model.utils import (
     INT_TO_LABEL,
+    LABEL_TO_INT,
     get_models_variant_dir,
     get_variant_name,
     load_model_artifact,
 )
-
-# Label encoding
-LABEL_TO_INT = {"H": 0, "D": 1, "A": 2}
 
 # Override aliases for odds parameters
 OVERRIDE_ALIASES = {
@@ -25,9 +23,6 @@ OVERRIDE_ALIASES = {
     "odds_draw": "odds_max_draw",
     "odds_away_win": "odds_max_away",
 }
-
-# Stat override keys that can be manually set
-STAT_OVERRIDE_KEYS = {"expected_home_goals", "expected_away_goals"}
 
 # Baseline event stat values for scenario adjustment
 EVENT_STAT_BASELINES = {
@@ -58,7 +53,8 @@ EVENT_STAT_EFFECTS = {
     "away_shots_on_target": (0.00, +0.10),
 }
 
-STAT_OVERRIDE_KEYS = STAT_OVERRIDE_KEYS | set(EVENT_STAT_EFFECTS.keys())
+# Stat override keys that can be manually set
+STAT_OVERRIDE_KEYS = {"expected_home_goals", "expected_away_goals"} | set(EVENT_STAT_EFFECTS.keys())
 
 
 @dataclass
@@ -108,22 +104,23 @@ def normalize_split_team_state_rows(
     home = filtered.loc[filtered["home_team"] == team].copy()
     away = filtered.loc[filtered["away_team"] == team].copy()
 
+    w = recent_form_window
     home = home.rename(
         columns={
             "home_matches_played_before_match": "matches_played_before_match",
-            f"home_points_avg_last_{recent_form_window}": "points_avg_last_5",
-            f"home_goals_for_avg_last_{recent_form_window}": "goals_for_avg_last_5",
-            f"home_goals_against_avg_last_{recent_form_window}": "goals_against_avg_last_5",
-            f"home_goal_diff_avg_last_{recent_form_window}": "goal_diff_avg_last_5",
+            f"home_points_avg_last_{w}": f"points_avg_last_{w}",
+            f"home_goals_for_avg_last_{w}": f"goals_for_avg_last_{w}",
+            f"home_goals_against_avg_last_{w}": f"goals_against_avg_last_{w}",
+            f"home_goal_diff_avg_last_{w}": f"goal_diff_avg_last_{w}",
         }
     )
     away = away.rename(
         columns={
             "away_matches_played_before_match": "matches_played_before_match",
-            f"away_points_avg_last_{recent_form_window}": "points_avg_last_5",
-            f"away_goals_for_avg_last_{recent_form_window}": "goals_for_avg_last_5",
-            f"away_goals_against_avg_last_{recent_form_window}": "goals_against_avg_last_5",
-            f"away_goal_diff_avg_last_{recent_form_window}": "goal_diff_avg_last_5",
+            f"away_points_avg_last_{w}": f"points_avg_last_{w}",
+            f"away_goals_for_avg_last_{w}": f"goals_for_avg_last_{w}",
+            f"away_goals_against_avg_last_{w}": f"goals_against_avg_last_{w}",
+            f"away_goal_diff_avg_last_{w}": f"goal_diff_avg_last_{w}",
         }
     )
 
@@ -131,10 +128,10 @@ def normalize_split_team_state_rows(
         "date",
         "time",
         "matches_played_before_match",
-        "points_avg_last_5",
-        "goals_for_avg_last_5",
-        "goals_against_avg_last_5",
-        "goal_diff_avg_last_5",
+        f"points_avg_last_{w}",
+        f"goals_for_avg_last_{w}",
+        f"goals_against_avg_last_{w}",
+        f"goal_diff_avg_last_{w}",
     ]
     combined = pd.concat([home[keep_columns], away[keep_columns]], ignore_index=True)
     return combined.sort_values(["date", "time"], ascending=True).reset_index(drop=True)
@@ -157,13 +154,14 @@ def estimate_team_state(
         recent_form_window=recent_form_window,
     )
 
+    w = recent_form_window
     if rows.empty:
         return {
             "matches_played_before_match": 0.0,
-            "points_avg_last_5": float("nan"),
-            "goals_for_avg_last_5": float("nan"),
-            "goals_against_avg_last_5": float("nan"),
-            "goal_diff_avg_last_5": float("nan"),
+            f"points_avg_last_{w}": float("nan"),
+            f"goals_for_avg_last_{w}": float("nan"),
+            f"goals_against_avg_last_{w}": float("nan"),
+            f"goal_diff_avg_last_{w}": float("nan"),
             "sparse_history": 1.0,
         }
 
@@ -172,10 +170,10 @@ def estimate_team_state(
 
     return {
         "matches_played_before_match": matches_before,
-        "points_avg_last_5": float(latest["points_avg_last_5"]),
-        "goals_for_avg_last_5": float(latest["goals_for_avg_last_5"]),
-        "goals_against_avg_last_5": float(latest["goals_against_avg_last_5"]),
-        "goal_diff_avg_last_5": float(latest["goal_diff_avg_last_5"]),
+        f"points_avg_last_{w}": float(latest[f"points_avg_last_{w}"]),
+        f"goals_for_avg_last_{w}": float(latest[f"goals_for_avg_last_{w}"]),
+        f"goals_against_avg_last_{w}": float(latest[f"goals_against_avg_last_{w}"]),
+        f"goal_diff_avg_last_{w}": float(latest[f"goal_diff_avg_last_{w}"]),
         "sparse_history": 1.0 if matches_before < recent_form_window else 0.0,
     }
 

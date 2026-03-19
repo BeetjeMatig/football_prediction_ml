@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -58,8 +59,8 @@ def run_prediction_smoke_test(
     valid_probs = all(0.0 <= value <= 1.0 for value in probs)
     valid_sum = abs(probability_sum - 1.0) < 1e-6
     valid_goals = (
-        prediction.expected_home_goals == prediction.expected_home_goals
-        and prediction.expected_away_goals == prediction.expected_away_goals
+        not math.isnan(prediction.expected_home_goals)
+        and not math.isnan(prediction.expected_away_goals)
         and prediction.expected_home_goals >= 0.0
         and prediction.expected_away_goals >= 0.0
     )
