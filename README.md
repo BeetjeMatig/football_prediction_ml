@@ -210,11 +210,22 @@ For each match query it returns:
 
 You can manually override any model feature using one or more `--feature-override feature=value` arguments to test what-if scenarios.
 
+You can also override fun game-event stats at prediction time; these adjust expected goals and then re-compute outcome probabilities:
+
+- `home_red_cards`, `away_red_cards`
+- `home_yellow_cards`, `away_yellow_cards`
+- `home_corners`, `away_corners`
+- `home_shots`, `away_shots`
+- `home_shots_on_target`, `away_shots_on_target`
+- `expected_home_goals`, `expected_away_goals`
+
 Examples:
 
 - Stronger home form: `--feature-override home_points_avg_last_5=2.3`
 - Weaker away defense: `--feature-override away_goals_against_avg_last_5=1.8`
 - Better home market price: `--feature-override odds_home_win=1.75`
+- Away team gets a red card scenario: `--feature-override away_red_cards=1`
+- High corner game scenario: `--feature-override home_corners=9 --feature-override away_corners=7`
 
 ## Rate Limiting
 

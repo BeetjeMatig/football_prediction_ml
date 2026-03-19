@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import pickle
 from dataclasses import dataclass
 from datetime import datetime
@@ -10,8 +11,10 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
-from sklearn.ensemble import HistGradientBoostingClassifier
-from sklearn.ensemble import HistGradientBoostingRegressor
+from sklearn.ensemble import (
+    HistGradientBoostingClassifier,
+    HistGradientBoostingRegressor,
+)
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, f1_score, log_loss, mean_absolute_error
 from sklearn.pipeline import Pipeline
@@ -26,6 +29,33 @@ OVERRIDE_ALIASES = {
     "odds_draw": "odds_max_draw",
     "odds_away_win": "odds_max_away",
 }
+STAT_OVERRIDE_KEYS = {"expected_home_goals", "expected_away_goals"}
+EVENT_STAT_BASELINES = {
+    "home_red_cards": 0.0,
+    "away_red_cards": 0.0,
+    "home_yellow_cards": 2.0,
+    "away_yellow_cards": 2.0,
+    "home_corners": 5.0,
+    "away_corners": 5.0,
+    "home_shots": 12.0,
+    "away_shots": 12.0,
+    "home_shots_on_target": 4.0,
+    "away_shots_on_target": 4.0,
+}
+EVENT_STAT_EFFECTS = {
+    # Positive values increase own expected goals, negative values reduce it.
+    "home_red_cards": (-0.35, +0.18),
+    "away_red_cards": (+0.18, -0.35),
+    "home_yellow_cards": (-0.05, +0.02),
+    "away_yellow_cards": (+0.02, -0.05),
+    "home_corners": (+0.06, 0.00),
+    "away_corners": (0.00, +0.06),
+    "home_shots": (+0.03, 0.00),
+    "away_shots": (0.00, +0.03),
+    "home_shots_on_target": (+0.10, 0.00),
+    "away_shots_on_target": (0.00, +0.10),
+}
+STAT_OVERRIDE_KEYS = STAT_OVERRIDE_KEYS | set(EVENT_STAT_EFFECTS.keys())
 
 
 @dataclass
@@ -126,7 +156,9 @@ def _get_models_variant_dir(
 
 def _load_modeling_data(
     input_dir: Path,
-) -> Tuple[pd.DataFrame, pd.Series, pd.DataFrame, pd.Series, pd.DataFrame, pd.DataFrame]:
+) -> Tuple[
+    pd.DataFrame, pd.Series, pd.DataFrame, pd.Series, pd.DataFrame, pd.DataFrame
+]:
     x_train_path = input_dir / "X_train.csv"
     y_train_path = input_dir / "y_train.csv"
     x_test_path = input_dir / "X_test.csv"
@@ -208,7 +240,10 @@ def _load_split_targets(
         test_split[key_columns + target_columns], on=key_columns, how="left"
     )
 
-    if merged_train[target_columns].isna().any().any() or merged_test[target_columns].isna().any().any():
+    if (
+        merged_train[target_columns].isna().any().any()
+        or merged_test[target_columns].isna().any().any()
+    ):
         raise ValueError(
             "Could not align split targets with modeling metadata for goal regression."
         )
@@ -308,8 +343,8 @@ def train_model_variant(
         add_recent_form_features=add_recent_form_features,
         recent_form_window=recent_form_window,
     )
-    x_train, y_train, x_test, y_test, train_metadata, test_metadata = _load_modeling_data(
-        input_dir
+    x_train, y_train, x_test, y_test, train_metadata, test_metadata = (
+        _load_modeling_data(input_dir)
     )
 
     y_home_train, y_away_train, y_home_test, y_away_test = _load_split_targets(
@@ -383,7 +418,9 @@ def train_model_variant(
         "home_goals_mae": float(mean_absolute_error(y_home_test, home_goal_test_pred)),
         "away_goals_mae": float(mean_absolute_error(y_away_test, away_goal_test_pred)),
     }
-    pd.DataFrame([goal_metrics]).to_csv(model_output_dir / "goal_metrics.csv", index=False)
+    pd.DataFrame([goal_metrics]).to_csv(
+        model_output_dir / "goal_metrics.csv", index=False
+    )
 
     artifact["home_goal_regressor"] = home_goal_regressor
     artifact["away_goal_regressor"] = away_goal_regressor
@@ -557,6 +594,82 @@ def _parse_overrides(overrides: Optional[List[str]]) -> Dict[str, float]:
     return parsed
 
 
+def _split_feature_and_stat_overrides(
+    overrides: Dict[str, float],
+) -> Tuple[Dict[str, float], Dict[str, float]]:
+    """Split overrides into model-feature overrides and predicted-stat overrides."""
+
+    feature_overrides = {
+        key: value for key, value in overrides.items() if key not in STAT_OVERRIDE_KEYS
+    }
+    stat_overrides = {
+        key: value for key, value in overrides.items() if key in STAT_OVERRIDE_KEYS
+    }
+    return feature_overrides, stat_overrides
+
+
+def _apply_event_stat_overrides_to_expected_goals(
+    expected_home_goals: float,
+    expected_away_goals: float,
+    stat_overrides: Dict[str, float],
+) -> Tuple[float, float]:
+    """Apply fun scenario adjustments from event-stat overrides to expected goals."""
+
+    home_goals = expected_home_goals
+    away_goals = expected_away_goals
+    for key, value in stat_overrides.items():
+        if key in {"expected_home_goals", "expected_away_goals"}:
+            continue
+        if key not in EVENT_STAT_EFFECTS:
+            continue
+
+        baseline = EVENT_STAT_BASELINES[key]
+        delta = value - baseline
+        home_effect, away_effect = EVENT_STAT_EFFECTS[key]
+        home_goals += delta * home_effect
+        away_goals += delta * away_effect
+
+    # Keep lambdas positive for Poisson conversion.
+    home_goals = max(0.05, home_goals)
+    away_goals = max(0.05, away_goals)
+    return home_goals, away_goals
+
+
+def _poisson_pmf(lmbda: float, k: int) -> float:
+    if lmbda < 0:
+        raise ValueError("Poisson mean must be non-negative.")
+    return math.exp(-lmbda) * (lmbda**k) / math.factorial(k)
+
+
+def _outcome_probabilities_from_expected_goals(
+    expected_home_goals: float,
+    expected_away_goals: float,
+    max_goals: int = 10,
+) -> Tuple[float, float, float]:
+    """Approximate P(H), P(D), P(A) via independent Poisson goal models."""
+
+    home_probs = [_poisson_pmf(expected_home_goals, k) for k in range(max_goals + 1)]
+    away_probs = [_poisson_pmf(expected_away_goals, k) for k in range(max_goals + 1)]
+
+    home_win = 0.0
+    draw = 0.0
+    away_win = 0.0
+    for home_goals in range(max_goals + 1):
+        for away_goals in range(max_goals + 1):
+            joint = home_probs[home_goals] * away_probs[away_goals]
+            if home_goals > away_goals:
+                home_win += joint
+            elif home_goals == away_goals:
+                draw += joint
+            else:
+                away_win += joint
+
+    total = home_win + draw + away_win
+    if total <= 0:
+        return 1 / 3, 1 / 3, 1 / 3
+    return home_win / total, draw / total, away_win / total
+
+
 def _build_feature_row(
     feature_columns: List[str],
     home_state: Dict[str, float],
@@ -676,6 +789,9 @@ def predict_match_outcome(
 
     kickoff_time_minutes = _parse_kickoff_time_minutes(kickoff_time)
     overrides = _parse_overrides(feature_overrides)
+    model_feature_overrides, stat_overrides = _split_feature_and_stat_overrides(
+        overrides
+    )
 
     feature_columns = [str(column) for column in artifact["feature_columns"]]
     feature_fill_values = {
@@ -691,17 +807,40 @@ def predict_match_outcome(
         home_state=home_state,
         away_state=away_state,
         feature_fill_values=feature_fill_values,
-        overrides=overrides,
+        overrides=model_feature_overrides,
         kickoff_time_minutes=kickoff_time_minutes,
     )
 
     probabilities = model.predict_proba(feature_row)[0]
-    predicted_int = int(probabilities.argmax())
     expected_home_goals = float("nan")
     expected_away_goals = float("nan")
     if home_goal_regressor is not None and away_goal_regressor is not None:
         expected_home_goals = float(home_goal_regressor.predict(feature_row)[0])
         expected_away_goals = float(away_goal_regressor.predict(feature_row)[0])
+
+    if "expected_home_goals" in stat_overrides:
+        expected_home_goals = stat_overrides["expected_home_goals"]
+    if "expected_away_goals" in stat_overrides:
+        expected_away_goals = stat_overrides["expected_away_goals"]
+
+    if not math.isnan(expected_home_goals) and not math.isnan(expected_away_goals):
+        expected_home_goals, expected_away_goals = (
+            _apply_event_stat_overrides_to_expected_goals(
+                expected_home_goals=expected_home_goals,
+                expected_away_goals=expected_away_goals,
+                stat_overrides=stat_overrides,
+            )
+        )
+
+    if not math.isnan(expected_home_goals) and not math.isnan(expected_away_goals):
+        probabilities = _outcome_probabilities_from_expected_goals(
+            expected_home_goals=expected_home_goals,
+            expected_away_goals=expected_away_goals,
+        )
+
+    probabilities = [float(probability) for probability in probabilities]
+
+    predicted_int = int(probabilities.index(max(probabilities)))
 
     return PredictionSummary(
         variant_name=variant_name,
