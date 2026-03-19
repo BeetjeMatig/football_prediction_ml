@@ -179,7 +179,12 @@ def load_split_targets(
 
 
 def load_model_artifact(model_path: Path) -> Dict[str, Any]:
-    """Load trained model artifact from pickle file."""
+    """Load trained model artifact from pickle file.
+
+    Security note: pickle can execute arbitrary code during deserialization.
+    Only load artifacts from trusted sources. For production use, consider
+    signed artifacts or safer serialization formats.
+    """
     if not model_path.exists():
         raise FileNotFoundError(
             f"Model artifact not found at {model_path}. Run --stage train first."

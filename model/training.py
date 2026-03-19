@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import pickle
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
@@ -22,7 +22,7 @@ from sklearn.preprocessing import StandardScaler
 from model.utils import (
     INT_TO_LABEL,
     LABEL_TO_INT,
-    get_frozen_variant_dir,
+    get_modeling_variant_dir,
     get_models_variant_dir,
     get_variant_name,
     load_modeling_data,
@@ -135,7 +135,6 @@ def train_model_variant(
         add_recent_form_features=add_recent_form_features,
         recent_form_window=recent_form_window,
     )
-    from model.utils import get_modeling_variant_dir
 
     input_dir = get_modeling_variant_dir(
         modeling_dir=modeling_dir,
@@ -201,7 +200,7 @@ def train_model_variant(
         "label_to_int": LABEL_TO_INT,
         "int_to_label": INT_TO_LABEL,
         "recent_form_window": recent_form_window,
-        "trained_at_utc": datetime.utcnow().isoformat(timespec="seconds"),
+        "trained_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "model_name": best_model_name,
     }
 

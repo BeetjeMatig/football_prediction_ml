@@ -21,7 +21,7 @@ def get_recent_form_feature_columns(window: int = 5) -> List[str]:
     """Return engineered recent-form feature names for both teams."""
 
     metric_names = [
-        f"matches_played_before_match",
+        "matches_played_before_match",
         f"points_avg_last_{window}",
         f"goals_for_avg_last_{window}",
         f"goals_against_avg_last_{window}",
@@ -147,6 +147,11 @@ def add_cross_season_recent_form_features(
     This function is intended for combined multi-file datasets and preserves team
     history across season boundaries. Newly promoted teams naturally start with no
     prior top-flight history in the dataset.
+
+    Note: The current implementation uses the same group keys as
+    ``add_recent_form_features``. The two functions are kept separate so that
+    cross-season grouping logic can be changed independently in the future
+    (e.g. adding a per-season reset or weighting decay across seasons).
     """
 
     missing_columns = sorted(RECENT_FORM_REQUIRED_COLUMNS - set(df.columns))

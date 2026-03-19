@@ -48,7 +48,12 @@ def validate_file(csv_path: Path) -> ValidationResult:
 
     try:
         raw_columns = pd.read_csv(csv_path, nrows=0).columns.tolist()
-    except Exception as exc:
+    except (
+        pd.errors.ParserError,
+        pd.errors.EmptyDataError,
+        UnicodeDecodeError,
+        OSError,
+    ) as exc:
         result = ValidationResult(file_path=csv_path, is_valid=False)
         result.missing_required = [f"(could not read file: {exc})"]
         return result

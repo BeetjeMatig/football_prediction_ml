@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import shutil
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import List
 
@@ -81,7 +81,7 @@ def freeze_model_variant(
         "variant_name": variant_name,
         "source_dir": str(source_dir),
         "frozen_dir": str(frozen_dir),
-        "frozen_at_utc": datetime.utcnow().isoformat(timespec="seconds"),
+        "frozen_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
     }
     with (frozen_dir / "freeze_manifest.json").open("w", encoding="utf-8") as handle:
         json.dump(manifest, handle, indent=2)
