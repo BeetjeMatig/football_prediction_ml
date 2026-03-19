@@ -657,7 +657,11 @@ def build_baseline_metrics_report(
         metrics_path = variant_dir / "metrics.csv"
         goals_path = variant_dir / "goal_metrics.csv"
         meta_path = variant_dir / "artifact_meta.json"
-        if not metrics_path.exists() or not goals_path.exists() or not meta_path.exists():
+        if (
+            not metrics_path.exists()
+            or not goals_path.exists()
+            or not meta_path.exists()
+        ):
             raise FileNotFoundError(
                 f"Missing metrics files for {variant_name} in {variant_dir}. Run --stage train first."
             )
@@ -668,8 +672,12 @@ def build_baseline_metrics_report(
             meta = json.load(handle)
 
         best_row = metrics_df.sort_values("log_loss").iloc[0]
-        home_goals_mae = pd.to_numeric(goal_df["home_goals_mae"], errors="coerce").iloc[0]
-        away_goals_mae = pd.to_numeric(goal_df["away_goals_mae"], errors="coerce").iloc[0]
+        home_goals_mae = pd.to_numeric(goal_df["home_goals_mae"], errors="coerce").iloc[
+            0
+        ]
+        away_goals_mae = pd.to_numeric(goal_df["away_goals_mae"], errors="coerce").iloc[
+            0
+        ]
         report_rows.append(
             {
                 "variant_name": variant_name,

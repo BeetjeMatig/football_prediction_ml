@@ -126,7 +126,16 @@ def main() -> None:
 
     if (
         args.stage
-        in {"split", "modeldata", "train", "freeze", "report", "smoke", "predict", "all"}
+        in {
+            "split",
+            "modeldata",
+            "train",
+            "freeze",
+            "report",
+            "smoke",
+            "predict",
+            "all",
+        }
         and not args.split_cutoff_date
     ):
         parser.error(
