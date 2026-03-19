@@ -16,8 +16,13 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import streamlit as st
+
 from scraper.config import COUNTRY_PAGE_ALLOWLIST, REQUEST_DELAY_SECONDS
-from scraper.discovery import discover_country_pages, make_session, scrape_top_league_links
+from scraper.discovery import (
+    discover_country_pages,
+    make_session,
+    scrape_top_league_links,
+)
 from scraper.downloader import download_csv_file
 from scraper.utils import (
     page_to_country_slug,
@@ -264,7 +269,11 @@ def run_scrape_with_progress(
 
     total_countries = len(country_pages)
     if total_countries == 0:
-        return written, ["No matching country pages found for selected countries."], False
+        return (
+            written,
+            ["No matching country pages found for selected countries."],
+            False,
+        )
 
     for country_index, country_page in enumerate(country_pages, start=1):
         if should_cancel_callback and should_cancel_callback():
@@ -393,8 +402,7 @@ def run_scrape_with_progress(
                 )
 
             if not (
-                country_index == total_countries
-                and season_index == len(season_labels)
+                country_index == total_countries and season_index == len(season_labels)
             ):
                 time.sleep(float(max(0.0, request_delay_seconds)))
 
@@ -467,7 +475,9 @@ def _start_scrape_job(min_start_year, selected_countries, request_delay_seconds)
         _update_scrape_job(
             job_id,
             progress=_compute_progress_fraction(info),
-            status_line=f"Country {country_idx}/{total}: {country}" if country else "Running...",
+            status_line=(
+                f"Country {country_idx}/{total}: {country}" if country else "Running..."
+            ),
             detail_line=(
                 f"Season {season_idx}/{season_total}: {season}"
                 if season
@@ -494,8 +504,12 @@ def _start_scrape_job(min_start_year, selected_countries, request_delay_seconds)
                 if job_id in SCRAPE_JOBS:
                     SCRAPE_JOBS[job_id]["written_files"] = [str(p) for p in written]
                     SCRAPE_JOBS[job_id]["logs"].extend(logs)
-                    SCRAPE_JOBS[job_id]["progress"] = 1.0 if not canceled else SCRAPE_JOBS[job_id]["progress"]
-                    SCRAPE_JOBS[job_id]["status"] = "canceled" if canceled else "completed"
+                    SCRAPE_JOBS[job_id]["progress"] = (
+                        1.0 if not canceled else SCRAPE_JOBS[job_id]["progress"]
+                    )
+                    SCRAPE_JOBS[job_id]["status"] = (
+                        "canceled" if canceled else "completed"
+                    )
                     SCRAPE_JOBS[job_id]["status_line"] = (
                         "Scrape canceled" if canceled else "Scrape completed"
                     )
@@ -530,52 +544,56 @@ def get_unique_seasons(test_pred):
 def get_league_standings(div, test_pred, season=None):
     """Calculate league standings from test predictions for a given season."""
     div_data = test_pred[test_pred["div"] == div].copy()
-    
+
     # Filter by season if specified
     if season:
         div_data["season"] = div_data["date"].apply(get_season_from_date)
         div_data = div_data[div_data["season"] == season]
-    
+
     if div_data.empty:
         return pd.DataFrame()
-    
+
     teams = set(div_data["home_team"]) | set(div_data["away_team"])
     standings = []
-    
+
     for team in sorted(teams):
         home_matches = div_data[div_data["home_team"] == team]
         away_matches = div_data[div_data["away_team"] == team]
-        
+
         # Count results
         home_wins = (home_matches["actual_result"] == "H").sum()
         home_draws = (home_matches["actual_result"] == "D").sum()
         home_losses = (home_matches["actual_result"] == "A").sum()
-        
+
         away_wins = (away_matches["actual_result"] == "A").sum()
         away_draws = (away_matches["actual_result"] == "D").sum()
         away_losses = (away_matches["actual_result"] == "H").sum()
-        
+
         # Aggregate
         total_matches = len(home_matches) + len(away_matches)
         wins = home_wins + away_wins
         draws = home_draws + away_draws
         losses = home_losses + away_losses
         points = wins * 3 + draws
-        
-        standings.append({
-            "Team": team,
-            "Matches": total_matches,
-            "Wins": wins,
-            "Draws": draws,
-            "Losses": losses,
-            "Points": points if total_matches > 0 else 0,
-        })
-    
+
+        standings.append(
+            {
+                "Team": team,
+                "Matches": total_matches,
+                "Wins": wins,
+                "Draws": draws,
+                "Losses": losses,
+                "Points": points if total_matches > 0 else 0,
+            }
+        )
+
     standings_df = pd.DataFrame(standings)
     if not standings_df.empty:
-        standings_df = standings_df.sort_values(["Points"], ascending=False).reset_index(drop=True)
+        standings_df = standings_df.sort_values(
+            ["Points"], ascending=False
+        ).reset_index(drop=True)
         standings_df.index = standings_df.index + 1
-    
+
     return standings_df
 
 
@@ -660,7 +678,9 @@ with tab2:
 
     with col2:
         away_team = st.selectbox(
-            "Away Team", [t for t in pred_teams if t != home_team], key="away_team_select"
+            "Away Team",
+            [t for t in pred_teams if t != home_team],
+            key="away_team_select",
         )
 
     if st.button("🔮 Predict Match"):
@@ -696,7 +716,9 @@ with tab2:
         # Editable controls are shown underneath prediction and trigger instant recalculation.
         st.markdown("---")
         st.subheader("Predicted Stats (Editable)")
-        st.caption("Change any value below. The prediction above recalculates automatically.")
+        st.caption(
+            "Change any value below. The prediction above recalculates automatically."
+        )
 
         matchup_key = f"{pred_div}_{home_team}_{away_team}".replace(" ", "_")
 
@@ -894,7 +916,9 @@ with tab2:
                                 ],
                             }
                         )
-                        ref["Classifier Probability"] = ref["Classifier Probability"].map(lambda x: f"{x:.1%}")
+                        ref["Classifier Probability"] = ref[
+                            "Classifier Probability"
+                        ].map(lambda x: f"{x:.1%}")
                         st.dataframe(ref, width="stretch")
 
             with col3:
@@ -945,25 +969,23 @@ with tab2:
 # ===== TAB 3: LEAGUE TABLE =====
 with tab3:
     st.header("League Standings")
-    
+
     col1, col2 = st.columns(2)
-    
+
     with col1:
         league_div = st.selectbox(
             "Select Division", get_unique_divisions(), key="league_div"
         )
-    
+
     with col2:
         seasons = get_unique_seasons(test_pred)
-        selected_season = st.selectbox(
-            "Select Season", seasons, key="league_season"
-        )
-    
+        selected_season = st.selectbox("Select Season", seasons, key="league_season")
+
     standings = get_league_standings(league_div, test_pred, season=selected_season)
-    
+
     if not standings.empty:
         st.subheader(f"Division {league_div} — Season {selected_season}")
-        
+
         # Display as table
         st.dataframe(
             standings,
@@ -975,13 +997,13 @@ with tab3:
                 "Losses": st.column_config.NumberColumn("L"),
                 "Points": st.column_config.NumberColumn("Pts", format="%d"),
             },
-            width="stretch"
+            width="stretch",
         )
-        
+
         # Summary stats
         st.markdown("---")
         st.subheader("📊 Division Summary")
-        
+
         col1, col2, col3 = st.columns(3)
         with col1:
             st.metric("Teams", len(standings))
@@ -1082,7 +1104,9 @@ with tab4:
 # ===== TAB 5: SCRAPING =====
 with tab5:
     st.header("Scraping")
-    st.write("Run selected-country scraping from inside the dashboard with live progress.")
+    st.write(
+        "Run selected-country scraping from inside the dashboard with live progress."
+    )
 
     scrape_col1, scrape_col2 = st.columns(2)
     with scrape_col1:
@@ -1104,7 +1128,9 @@ with tab5:
             help="Delay between downloads. Lower values are faster but increase load/risk of temporary blocking.",
         )
     with scrape_col2:
-        all_countries = sorted(page_to_country_slug(page) for page in COUNTRY_PAGE_ALLOWLIST)
+        all_countries = sorted(
+            page_to_country_slug(page) for page in COUNTRY_PAGE_ALLOWLIST
+        )
         selected_countries = st.multiselect(
             "Countries",
             options=all_countries,
@@ -1167,10 +1193,14 @@ with tab5:
                 float(scrape_delay_seconds),
             )
             st.session_state["active_scrape_job_id"] = job_id
-            st.info("Scrape started in background. Use Refresh Progress to update view.")
+            st.info(
+                "Scrape started in background. Use Refresh Progress to update view."
+            )
 
     if cancel_clicked and active_job_id:
-        _update_scrape_job(active_job_id, cancel_requested=True, detail_line="Cancel requested...")
+        _update_scrape_job(
+            active_job_id, cancel_requested=True, detail_line="Cancel requested..."
+        )
         st.warning("Cancel requested. Scrape will stop after the current step.")
 
     if refresh_clicked:
@@ -1207,9 +1237,7 @@ with tab5:
             st.dataframe(output_df, width="stretch")
 
         if status == "running" and auto_refresh_enabled:
-            st.caption(
-                f"Auto-refresh is on. Updating every {auto_refresh_seconds}s..."
-            )
+            st.caption(f"Auto-refresh is on. Updating every {auto_refresh_seconds}s...")
             time.sleep(int(auto_refresh_seconds))
             st.rerun()
     else:
@@ -1219,7 +1247,9 @@ with tab5:
 # ===== TAB 6: TRAINING =====
 with tab6:
     st.header("Training Pipeline")
-    st.write("Run preprocessing, split, modeling dataset build, training, freeze/report/smoke directly from the dashboard.")
+    st.write(
+        "Run preprocessing, split, modeling dataset build, training, freeze/report/smoke directly from the dashboard."
+    )
     st.info(
         "Tip: hover the info icons (i) beside inputs and buttons for what each setting does. "
         "Typical flow: Preprocess+Split+Modeldata -> Train -> Freeze+Report+Smoke."
@@ -1287,7 +1317,12 @@ with tab6:
             help="Away team used in smoke prediction check.",
         )
 
-    common_opts = ["--split-cutoff-date", train_cutoff, "--recent-form-window", str(train_recent_window)]
+    common_opts = [
+        "--split-cutoff-date",
+        train_cutoff,
+        "--recent-form-window",
+        str(train_recent_window),
+    ]
     if train_add_recent:
         common_opts.append("--add-recent-form-features")
     if train_write_both:
@@ -1296,7 +1331,16 @@ with tab6:
         common_opts.append("--include-odds")
 
     smoke_opts = list(common_opts)
-    smoke_opts.extend(["--division", smoke_division, "--home-team", smoke_home, "--away-team", smoke_away])
+    smoke_opts.extend(
+        [
+            "--division",
+            smoke_division,
+            "--home-team",
+            smoke_home,
+            "--away-team",
+            smoke_away,
+        ]
+    )
 
     st.markdown("### Quick Actions")
     qa1, qa2, qa3, qa4 = st.columns(4)
@@ -1366,7 +1410,9 @@ with tab6:
     ):
         logs = []
         ok_all = True
-        with st.spinner("Running full pipeline (preprocess -> split -> modeldata -> train -> freeze -> report -> smoke)..."):
+        with st.spinner(
+            "Running full pipeline (preprocess -> split -> modeldata -> train -> freeze -> report -> smoke)..."
+        ):
             full_steps = [
                 ("preprocess", common_opts),
                 ("split", common_opts),
