@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 """Quick test of data loading"""
-from pathlib import Path
 import pickle
+from pathlib import Path
+
 import pandas as pd
 
 model_dir = Path("data/models/frozen/official/date_2024-08-01/extended_recent_form_w5")

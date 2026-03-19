@@ -39,10 +39,7 @@ def _coerce_known_dtypes(df: pd.DataFrame) -> pd.DataFrame:
             continue
 
         if spec.dtype == "datetime":
-            # Source dates are in dd/mm/yy format.
-            df[canonical_name] = pd.to_datetime(
-                df[canonical_name], dayfirst=True, errors="coerce"
-            )
+            df[canonical_name] = _parse_date_series(df[canonical_name])
         elif spec.dtype == "Int64":
             df[canonical_name] = pd.to_numeric(
                 df[canonical_name], errors="coerce"
@@ -56,6 +53,55 @@ def _coerce_known_dtypes(df: pd.DataFrame) -> pd.DataFrame:
             df[canonical_name] = series.astype("category")
 
     return df
+
+
+def _parse_date_series(series: pd.Series) -> pd.Series:
+    """Parse football-data date strings with explicit formats.
+
+    Typical source formats are dd/mm/yy and dd/mm/YYYY. We parse explicitly to
+    avoid format-inference warnings and keep parsing behavior stable.
+    """
+
+    values = series.astype("string").str.strip()
+
+    parsed = pd.to_datetime(values, format="%d/%m/%Y", errors="coerce")
+    missing = parsed.isna()
+
+    if missing.any():
+        parsed_short = pd.to_datetime(
+            values[missing], format="%d/%m/%y", errors="coerce"
+        )
+        parsed.loc[missing] = parsed_short
+        missing = parsed.isna()
+
+    # Fallback for rare mixed formats while keeping day-first semantics explicit.
+    if missing.any():
+        parsed_mixed = pd.to_datetime(
+            values[missing], format="mixed", dayfirst=True, errors="coerce"
+        )
+        parsed.loc[missing] = parsed_mixed
+
+    return parsed
+
+
+def _read_csv_with_fallback(csv_path: Path) -> pd.DataFrame:
+    """Read CSV with encoding fallbacks for legacy football-data files."""
+
+    encodings = ["utf-8", "utf-8-sig", "cp1252", "latin1"]
+    last_error: UnicodeDecodeError | None = None
+
+    for encoding in encodings:
+        try:
+            return pd.read_csv(csv_path, encoding=encoding)
+        except UnicodeDecodeError as error:
+            last_error = error
+            continue
+
+    if last_error is not None:
+        raise last_error
+
+    # Defensive fallback; loop above should always return or raise.
+    return pd.read_csv(csv_path)
 
 
 def clean_dataframe(df: pd.DataFrame, include_odds: bool) -> pd.DataFrame:
@@ -84,7 +130,7 @@ def clean_file(
 ) -> Tuple[pd.DataFrame, CleaningResult]:
     """Read and clean a single CSV file."""
 
-    df = pd.read_csv(csv_path)
+    df = _read_csv_with_fallback(csv_path)
     rows_in = len(df)
 
     cleaned = clean_dataframe(df, include_odds=include_odds)
