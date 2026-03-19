@@ -227,3 +227,7 @@ football_prediction_ml/
 ## Disclaimer
 
 This project is for educational purposes only. Data is sourced from football-data.co.uk — always check their terms of use before scraping. Do not use this project for betting or any commercial application without permission.
+
+## AI Usage Disclaimer
+
+This project has been created with the help of GitHub Copilot and Claude Code. All code has been reviewed by myself for functionality.
