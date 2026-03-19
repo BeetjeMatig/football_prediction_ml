@@ -1,271 +1,175 @@
 # Football Match Outcome Predictor
 
-Scrapes top-flight league CSVs from football-data.co.uk and preprocesses them into model-ready datasets for football match outcome prediction.
+Scrapes top-flight league CSVs from [football-data.co.uk](https://www.football-data.co.uk/englandm.php), preprocesses them into model-ready datasets, trains classifiers, and predicts match outcomes with probability estimates.
 
-## Data Source
-
-- [football-data.co.uk](https://www.football-data.co.uk/englandm.php) — Premier League season CSV files
-- The scraper first hits the main download page, discovers country league pages, then downloads the top-flight CSVs for each country
-- Data is collected through web scraping (no API)
-
-## Current Scope
-
-The project currently supports nine stages:
-
-- Scraping raw top-flight league CSV data from football-data.co.uk.
-- Preprocessing raw CSVs into cleaned datasets, with optional betting odds columns and optional recent-form features.
-- Combining processed datasets and splitting them into train/test sets by date.
-- Building leakage-safe modeling datasets from those train/test splits.
-- Training candidate classification models and selecting the best by test log loss.
-- Freezing trained model artifacts into a named official bundle.
-- Building a consolidated baseline metrics report from trained outputs.
-- Running a prediction smoke test to confirm stable prediction behavior.
-- Predicting a future matchup from team histories, including outcome probabilities and expected goals, with optional manual feature overrides for scenario testing.
-
-Current preprocessing capabilities:
-
-- Legend-driven schema and column alias normalization.
-- Schema validation across raw files.
-- Data cleaning and dtype coercion.
-- Two output variants: without odds and with odds.
-- Optional cross-season recent-form features built from prior matches only.
+---
 
 ## Setup
 
-1. Create and activate a Python virtual environment.
-2. Install dependencies:
-
 ```bash
+python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-## Run
+---
+
+## Running the Pipeline
+
+The pipeline is driven by `main.py` with a `--stage` flag. Stages run sequentially — each one depends on the output of the previous.
+
+### Full pipeline (recommended first run)
 
 ```bash
-python main.py
+python main.py --stage all --write-both-variants --add-recent-form-features --split-cutoff-date 2024-08-01
 ```
 
-No browser automation required — the scraper uses plain HTTP requests.
+### Stage by stage
 
-Example with a minimum season start year of 2010:
+**1. Scrape** — download raw CSVs from football-data.co.uk
 
 ```bash
-python main.py --min-start-year 2010
+python main.py --stage scrape --min-start-year 2010
 ```
 
-Preprocess existing raw data without betting odds:
+**2. Preprocess** — clean and normalize raw data
 
 ```bash
+# Base output only
 python main.py --stage preprocess
-```
 
-Preprocess existing raw data and write both base and extended outputs:
-
-```bash
+# Both base and odds-extended outputs
 python main.py --stage preprocess --write-both-variants
-```
 
-Preprocess with recent-form features added:
-
-```bash
+# With rolling recent-form features
 python main.py --stage preprocess --write-both-variants --add-recent-form-features
 ```
 
-Run scraping and preprocessing in one command:
-
-```bash
-python main.py --stage all --write-both-variants
-```
-
-Create a date-based split from processed data:
+**3. Split** — create a date-based train/test split
 
 ```bash
 python main.py --stage split --add-recent-form-features --split-cutoff-date 2024-08-01
 ```
 
-When recent-form is enabled in the split stage, features are recomputed on the
-combined multi-file dataset so team history continues across seasons.
-
-Create leakage-safe modeling datasets from an existing split:
+**4. Model data** — build leakage-safe feature/target datasets
 
 ```bash
 python main.py --stage modeldata --add-recent-form-features --split-cutoff-date 2024-08-01
 ```
 
-Train candidate models and save the best artifact:
+**5. Train** — fit candidate models and save the best
 
 ```bash
 python main.py --stage train --add-recent-form-features --split-cutoff-date 2024-08-01
 ```
 
-Freeze trained artifacts as an official bundle:
+**6. Freeze** — bundle trained artifacts under a named label
 
 ```bash
 python main.py --stage freeze --write-both-variants --add-recent-form-features --split-cutoff-date 2024-08-01 --freeze-label official
 ```
 
-Build consolidated baseline metrics report:
+**7. Report** — generate a consolidated baseline metrics report
 
 ```bash
 python main.py --stage report --write-both-variants --add-recent-form-features --split-cutoff-date 2024-08-01
 ```
 
-Run prediction smoke test:
+**8. Smoke test** — confirm stable prediction behavior
 
 ```bash
 python main.py --stage smoke --include-odds --add-recent-form-features --split-cutoff-date 2024-08-01
 ```
 
-Predict one matchup from historical team form:
+**9. Predict** — predict a specific matchup from team history
 
 ```bash
-python main.py --stage predict --add-recent-form-features --split-cutoff-date 2024-08-01 --division E0 --home-team "Arsenal" --away-team "Chelsea"
+python main.py --stage predict --add-recent-form-features --split-cutoff-date 2024-08-01 \
+  --division E0 --home-team "Arsenal" --away-team "Chelsea"
 ```
 
-Scenario analysis with manual overrides:
+With scenario overrides:
 
 ```bash
-python main.py --stage predict --include-odds --add-recent-form-features --split-cutoff-date 2024-08-01 --division E0 --home-team "Arsenal" --away-team "Chelsea" --kickoff-time 20:00 --feature-override odds_home_win=1.85 --feature-override home_points_avg_last_5=2.4
+python main.py --stage predict --include-odds --add-recent-form-features --split-cutoff-date 2024-08-01 \
+  --division E0 --home-team "Arsenal" --away-team "Chelsea" \
+  --kickoff-time 20:00 \
+  --feature-override odds_home_win=1.85 \
+  --feature-override home_points_avg_last_5=2.4
 ```
 
-Processed output directories currently follow this pattern:
+---
 
-- `data/processed/base`
-- `data/processed/extended`
-- `data/processed/base_recent_form_w5`
-- `data/processed/extended_recent_form_w5`
+## Output Structure
 
-The recent-form variants are written separately so cleaned-only outputs are not overwritten.
+```
+data/
+├── raw/                                          # Scraped CSVs
+├── processed/
+│   ├── base/                                     # Cleaned, no odds
+│   ├── extended/                                 # Cleaned, with odds
+│   ├── base_recent_form_w5/                      # + rolling form features
+│   └── extended_recent_form_w5/
+├── splits/
+│   └── date_YYYY-MM-DD/<variant>/
+│       ├── train.csv
+│       └── test.csv
+├── modeling/
+│   └── date_YYYY-MM-DD/<variant>/
+│       ├── X_train.csv / y_train.csv
+│       ├── X_test.csv  / y_test.csv
+│       └── train_metadata.csv / test_metadata.csv
+└── models/
+    ├── date_YYYY-MM-DD/<variant>/
+    │   ├── best_model.pkl
+    │   ├── metrics.csv
+    │   ├── goal_metrics.csv
+    │   ├── test_predictions.csv
+    │   └── artifact_meta.json
+    ├── date_YYYY-MM-DD/
+    │   └── baseline_metrics.json
+    └── frozen/<freeze_label>/date_YYYY-MM-DD/<variant>/
+```
 
-Date-based split outputs are written under:
+---
 
-- `data/splits/date_YYYY-MM-DD/<variant>/train.csv`
-- `data/splits/date_YYYY-MM-DD/<variant>/test.csv`
+## Considerations
 
-Modeling datasets are written under:
+### Train/test split
 
-- `data/modeling/date_YYYY-MM-DD/<variant>/X_train.csv`
-- `data/modeling/date_YYYY-MM-DD/<variant>/y_train.csv`
-- `data/modeling/date_YYYY-MM-DD/<variant>/X_test.csv`
-- `data/modeling/date_YYYY-MM-DD/<variant>/y_test.csv`
-- `data/modeling/date_YYYY-MM-DD/<variant>/train_metadata.csv`
-- `data/modeling/date_YYYY-MM-DD/<variant>/test_metadata.csv`
+Splits are always date-based — never random. The model trains on older matches and is evaluated on newer ones. A random split would leak future data into training and produce overly optimistic scores.
 
-Trained model outputs are written under:
+Example cutoff: train on seasons up to 2023-24, test on 2024-25 (`--split-cutoff-date 2024-08-01`).
 
-- `data/models/date_YYYY-MM-DD/<variant>/best_model.pkl`
-- `data/models/date_YYYY-MM-DD/<variant>/metrics.csv`
-- `data/models/date_YYYY-MM-DD/<variant>/goal_metrics.csv`
-- `data/models/date_YYYY-MM-DD/<variant>/test_predictions.csv`
-- `data/models/date_YYYY-MM-DD/<variant>/artifact_meta.json`
+### Leakage prevention
 
-Frozen model bundles are written under:
+The modeling stage removes any columns that reveal information about the match being predicted (full-time goals, half-time result, in-match shots/corners/cards). Retained features are strictly pre-match: kickoff time, division, team identifiers, rolling form, sparse-history indicators, and optionally market odds.
 
-- `data/models/frozen/<freeze_label>/date_YYYY-MM-DD/<variant>/...`
+Missing numeric values are imputed using training-set medians before being applied to both train and test sets.
 
-Baseline report output:
+### Recent-form features
 
-- `data/models/date_YYYY-MM-DD/baseline_metrics.json`
+When `--add-recent-form-features` is used at the split stage, form features are recomputed on the full combined dataset so that team history carries across season boundaries correctly.
 
-The modeling stage is independent of how many years or seasons were included upstream. It works from whatever rows exist in the selected split and filters columns by leakage rules rather than by hard-coded seasons.
+### Prediction overrides
 
-## Train/Test Split Strategy
-
-When the project moves to model training, the train/test split should be date-based rather than random.
-
-Why this matters:
-
-- This is a forecasting problem, so the model should train on older matches and be evaluated on newer matches.
-- A random split would mix future matches into the training set and give an unrealistically optimistic score.
-- The existing recent-form features are already time-aware, so the evaluation strategy should follow the same logic.
-
-Recommended approach:
-
-- Train on earlier seasons or matches before a chosen cutoff date.
-- Test on later seasons or matches on or after that cutoff date.
-
-Example:
-
-- Train: seasons `2020-21` through `2023-24`
-- Test: season `2024-25`
-
-This is now the default split strategy for the repository's split stage and should remain the default for any future model training pipeline.
-
-## Modeling Dataset Strategy
-
-The modeling dataset builder removes columns that would leak information from the match being predicted.
-
-Examples of excluded columns:
-
-- full-time goals
-- half-time goals and half-time result
-- current-match shots, corners, and cards
-
-Examples of retained columns:
-
-- kickoff time (`time`) as a valid pre-match context feature
-- kickoff time encoded to minutes since midnight during modeling dataset prep
-- division, teams, and date in separate metadata files
-- rolling recent-form features
-- sparse-history indicators (`home_sparse_history`, `away_sparse_history`)
-- optional market odds columns when that variant is selected
-
-Additional modeling-prep transformations:
-
-- Missing numeric feature values are imputed using training-set medians and then
-	applied to both train and test.
-- Sparse-history indicators mark teams with fewer than the selected recent-form
-	window of prior matches.
-
-This stage does not assume a fixed set of seasons. It uses whatever train/test rows are present in the selected split directory.
-
-## Model Training Strategy
-
-The training stage currently fits two multiclass classifiers on each selected variant:
-
-- Multinomial logistic regression (interpretable baseline)
-- Histogram-based gradient boosting (strong tabular model)
-
-Model selection currently uses test-set log loss as the primary metric. Accuracy and macro F1 are also exported for comparison.
-
-## Prediction and Simulation
-
-The prediction stage builds a pre-match feature row from each team's most recent known history in the chosen division and cutoff dataset.
-
-For each match query it returns:
-
-- Multiclass outcome probabilities: home win / draw / away win
-- Expected home goals and expected away goals (regression outputs)
-
-You can manually override any model feature using one or more `--feature-override feature=value` arguments to test what-if scenarios.
-
-You can also override fun game-event stats at prediction time; these adjust expected goals and then re-compute outcome probabilities:
-
-- `home_red_cards`, `away_red_cards`
-- `home_yellow_cards`, `away_yellow_cards`
-- `home_corners`, `away_corners`
-- `home_shots`, `away_shots`
-- `home_shots_on_target`, `away_shots_on_target`
-- `expected_home_goals`, `expected_away_goals`
-
-Examples:
+Any model feature can be overridden at prediction time with `--feature-override feature=value` to run what-if scenarios. In-game event stats (red cards, corners, shots, expected goals) adjust the goals regression and recompute outcome probabilities. Examples:
 
 - Stronger home form: `--feature-override home_points_avg_last_5=2.3`
-- Weaker away defense: `--feature-override away_goals_against_avg_last_5=1.8`
-- Better home market price: `--feature-override odds_home_win=1.75`
-- Away team gets a red card scenario: `--feature-override away_red_cards=1`
-- High corner game scenario: `--feature-override home_corners=9 --feature-override away_corners=7`
+- Away red card: `--feature-override away_red_cards=1`
+- High-corner game: `--feature-override home_corners=9 --feature-override away_corners=7`
 
-## Rate Limiting
+### Scraper behaviour
 
-The scraper waits `6` seconds between requests and sends a polite User-Agent header.
+The scraper uses plain HTTP requests (no browser automation) and waits 6 seconds between requests with a polite User-Agent header. football-data.co.uk may change its page structure over time, which could break discovery.
 
-## Known Limitations
+### Known limitations
 
-- football-data.co.uk may change its page structure or remove country/season links over time.
-- Only a subset of market-level betting odds columns are standardized into the current schema.
+- Only a subset of betting odds columns are standardized into the current schema.
+- Team name matching is string-based; historical name changes or alternate spellings may cause gaps in form history.
 
-## Current Structure
+---
+
+## Project Structure
 
 ```
 football_prediction_ml/
@@ -295,12 +199,11 @@ football_prediction_ml/
 │   └── legend.txt
 ├── main.py
 ├── requirements.txt
-├── .gitignore
 └── README.md
 ```
 
-## Disclaimer
-This project is for educational purposes only. The data is sourced from football-data.co.uk, and the scraper is designed to be respectful of their site. Always check the site's terms of use before scraping.
+---
 
-## Free use policy
-This project is open-source and free to use for educational and non-commercial purposes. You may modify and distribute the code as needed, but please give credit to the original author and do not use it for commercial applications without permission. Please also respect the data source's terms of use when accessing and using the scraped data. Do not use this code for betting or any activities that may violate the data source's policies.
+## Disclaimer
+
+This project is for educational purposes only. Data is sourced from football-data.co.uk — always check their terms of use before scraping. Do not use this project for betting or any commercial application without permission.
