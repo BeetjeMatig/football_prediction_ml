@@ -4,18 +4,36 @@ Scrapes top-flight league CSVs from [football-data.co.uk](https://www.football-d
 
 ---
 
-## Setup
+## Quick Start
+
+### Setup
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
+### Run the Streamlit App (Recommended)
+
+The easiest way to explore predictions and team statistics:
+
+```bash
+streamlit run app.py
+```
+
+This opens an interactive dashboard where you can:
+- **Select a league, season, and division**
+- **View team stats and recent form**
+- **Get real-time match predictions** with probability estimates
+- **Test scenario overrides** (e.g., "what if this player gets a red card?")
+- **Scrape fresh data** directly from the app (with optional caching)
+
 ---
 
-## Running the Pipeline
+<details>
+<summary><strong>Advanced: CLI Pipeline (Click to expand)</strong></summary>
 
-The pipeline is driven by `main.py` with a `--stage` flag. Stages run sequentially — each one depends on the output of the previous.
+The pipeline can also be driven via command line using `main.py` with a `--stage` flag. Stages run sequentially — each one depends on the output of the previous.
 
 ### Full pipeline (recommended first run)
 
@@ -96,6 +114,8 @@ python main.py --stage predict --include-odds --add-recent-form-features --split
   --feature-override odds_home_win=1.85 \
   --feature-override home_points_avg_last_5=2.4
 ```
+
+</details>
 
 ---
 
