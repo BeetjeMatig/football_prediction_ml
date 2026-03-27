@@ -10,6 +10,66 @@ import pandas as pd
 
 from preprocessing.pipeline import get_processed_variant_name
 
+
+def _find_flexible_variant_dir(
+    base_dir: Path,
+    cutoff_date: str,
+    include_odds: bool,
+    marker_file: str,
+) -> Path:
+    """Find variant directory allowing for suffixes like base_recent_form_w5.
+
+    First tries exact match (e.g., base/ or extended/), then looks for
+    directories starting with the prefix + "_" (e.g., base_recent_form_w5/)."""
+    prefix = "extended" if include_odds else "base"
+    date_dir = base_dir / f"date_{cutoff_date}"
+
+    if not date_dir.exists():
+        raise FileNotFoundError(f"Date directory not found: {date_dir}")
+
+    # First try exact match
+    exact_dir = date_dir / prefix
+    if (exact_dir / marker_file).exists():
+        return exact_dir
+
+    # Then look for directories starting with prefix + "_"
+    for candidate in date_dir.iterdir():
+        if candidate.is_dir() and candidate.name.startswith(f"{prefix}_"):
+            if (candidate / marker_file).exists():
+                return candidate
+
+    raise FileNotFoundError(
+        f"No directory found with prefix '{prefix}' containing '{marker_file}' in {date_dir}"
+    )
+
+
+def find_models_variant_dir(
+    models_dir: Path,
+    cutoff_date: str,
+    include_odds: bool,
+) -> Path:
+    """Find trained model directory allowing for suffixes like base_recent_form_w5."""
+    return _find_flexible_variant_dir(
+        base_dir=models_dir,
+        cutoff_date=cutoff_date,
+        include_odds=include_odds,
+        marker_file="best_model.pkl",
+    )
+
+
+def find_splits_variant_dir(
+    splits_dir: Path,
+    cutoff_date: str,
+    include_odds: bool,
+) -> Path:
+    """Find splits directory allowing for suffixes like base_recent_form_w5."""
+    return _find_flexible_variant_dir(
+        base_dir=splits_dir,
+        cutoff_date=cutoff_date,
+        include_odds=include_odds,
+        marker_file="train.csv",
+    )
+
 LABEL_TO_INT = {"H": 0, "D": 1, "A": 2}
 INT_TO_LABEL = {value: key for key, value in LABEL_TO_INT.items()}
 

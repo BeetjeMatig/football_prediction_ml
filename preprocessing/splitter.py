@@ -9,7 +9,7 @@ from typing import List, Tuple
 import pandas as pd
 
 from .features import add_cross_season_recent_form_features
-from .pipeline import get_processed_variant_dir, get_processed_variant_name
+from .pipeline import get_processed_variant_name
 
 
 @dataclass
@@ -41,6 +41,27 @@ class SplitRunSummary:
             f"features={self.add_recent_form_features}{feature_suffix}, "
             f"output_dir={self.output_dir}"
         )
+
+
+def _find_input_dir(processed_dir: Path, include_odds: bool) -> Path:
+    """Find input directory allowing for suffixes like base_recent_form_w5."""
+    prefix = "extended" if include_odds else "base"
+    if not processed_dir.exists():
+        raise FileNotFoundError(f"Processed directory not found: {processed_dir}")
+
+    # First try exact match
+    exact_dir = processed_dir / prefix
+    if exact_dir.exists():
+        return exact_dir
+
+    # Then look for directories starting with prefix + "_"
+    for candidate in processed_dir.iterdir():
+        if candidate.is_dir() and candidate.name.startswith(f"{prefix}_"):
+            return candidate
+
+    raise FileNotFoundError(
+        f"No processed directory found with prefix '{prefix}' in {processed_dir}"
+    )
 
 
 def load_processed_dataset(input_dir: Path) -> Tuple[pd.DataFrame, int]:
@@ -89,13 +110,7 @@ def run_date_split(
 ) -> SplitRunSummary:
     """Combine processed files for one variant and write date-based train/test CSVs."""
 
-    input_include_recent_form_features = False
-    input_dir = get_processed_variant_dir(
-        processed_dir=processed_dir,
-        include_odds=include_odds,
-        add_recent_form_features=input_include_recent_form_features,
-        recent_form_window=recent_form_window,
-    )
+    input_dir = _find_input_dir(processed_dir=processed_dir, include_odds=include_odds)
     variant_name = get_processed_variant_name(
         include_odds=include_odds,
         add_recent_form_features=add_recent_form_features,

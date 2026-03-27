@@ -12,7 +12,8 @@ import pandas as pd
 from model.utils import (
     INT_TO_LABEL,
     LABEL_TO_INT,
-    get_models_variant_dir,
+    find_models_variant_dir,
+    find_splits_variant_dir,
     get_variant_name,
     load_model_artifact,
 )
@@ -340,23 +341,17 @@ def predict_match_outcome(
         add_recent_form_features=add_recent_form_features,
         recent_form_window=recent_form_window,
     )
-    model_dir = get_models_variant_dir(
+    model_dir = find_models_variant_dir(
         models_dir=models_dir,
         cutoff_date=cutoff_date,
         include_odds=include_odds,
-        add_recent_form_features=add_recent_form_features,
-        recent_form_window=recent_form_window,
     )
     artifact = load_model_artifact(model_dir / "best_model.pkl")
 
-    split_variant_dir = (
-        splits_dir
-        / f"date_{cutoff_date}"
-        / get_variant_name(
-            include_odds=include_odds,
-            add_recent_form_features=add_recent_form_features,
-            recent_form_window=recent_form_window,
-        )
+    split_variant_dir = find_splits_variant_dir(
+        splits_dir=splits_dir,
+        cutoff_date=cutoff_date,
+        include_odds=include_odds,
     )
     train_path = split_variant_dir / "train.csv"
     test_path = split_variant_dir / "test.csv"

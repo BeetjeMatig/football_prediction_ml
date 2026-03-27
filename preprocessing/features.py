@@ -42,6 +42,24 @@ def _build_recent_form_features(
 ) -> pd.DataFrame:
     """Build no-leak recent-form features for the provided grouping keys."""
 
+    # Drop any existing recent-form columns to avoid conflicts on re-runs
+    existing_recent_cols = [
+        col for col in df.columns
+        if col.startswith(("home_", "away_"))
+        and any(
+            suffix in col
+            for suffix in (
+                "_matches_played_before_match",
+                "_points_avg_last_",
+                "_goals_for_avg_last_",
+                "_goals_against_avg_last_",
+                "_goal_diff_avg_last_",
+            )
+        )
+    ]
+    if existing_recent_cols:
+        df = df.drop(columns=existing_recent_cols)
+
     working = df.copy().reset_index(drop=True)
     working["_row_id"] = working.index
 
