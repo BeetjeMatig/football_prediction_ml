@@ -58,9 +58,8 @@ def build_baseline_metrics_report(
             or not goals_path.exists()
             or not meta_path.exists()
         ):
-            raise FileNotFoundError(
-                f"Missing metrics files for {variant_name} in {variant_dir}. Run --stage train first."
-            )
+            print(f"Warning: Skipping variant '{variant_name}' - missing metrics files in {variant_dir}")
+            continue
 
         metrics_df = pd.read_csv(metrics_path)
         goal_df = pd.read_csv(goals_path)

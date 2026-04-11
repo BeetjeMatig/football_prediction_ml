@@ -35,17 +35,29 @@ def run_prediction_smoke_test(
     away_team: str = "Chelsea",
 ) -> SmokeTestSummary:
     """Run a minimal prediction smoke test and validate output sanity."""
-    prediction = predict_match_outcome(
-        splits_dir=splits_dir,
-        models_dir=models_dir,
-        cutoff_date=cutoff_date,
+    variant_name = get_variant_name(
         include_odds=include_odds,
-        division=division,
-        home_team=home_team,
-        away_team=away_team,
         add_recent_form_features=add_recent_form_features,
         recent_form_window=recent_form_window,
     )
+    try:
+        prediction = predict_match_outcome(
+            splits_dir=splits_dir,
+            models_dir=models_dir,
+            cutoff_date=cutoff_date,
+            include_odds=include_odds,
+            division=division,
+            home_team=home_team,
+            away_team=away_team,
+            add_recent_form_features=add_recent_form_features,
+            recent_form_window=recent_form_window,
+        )
+    except FileNotFoundError as e:
+        return SmokeTestSummary(
+            variant_name=variant_name,
+            passed=False,
+            details=f"Skipped - {e}",
+        )
     probability_sum = (
         prediction.probability_home_win
         + prediction.probability_draw

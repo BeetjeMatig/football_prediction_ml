@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import List
 
-from model.utils import get_frozen_variant_dir, get_models_variant_dir, get_variant_name
+from model.utils import find_models_variant_dir
 
 
 @dataclass
@@ -37,30 +37,17 @@ def freeze_model_variant(
     freeze_label: str = "official",
 ) -> FreezeRunSummary:
     """Copy one trained variant artifact bundle to a frozen release directory."""
-    variant_name = get_variant_name(
-        include_odds=include_odds,
-        add_recent_form_features=add_recent_form_features,
-        recent_form_window=recent_form_window,
-    )
-    source_dir = get_models_variant_dir(
+    # Use flexible lookup to find the trained model directory
+    source_dir = find_models_variant_dir(
         models_dir=models_dir,
         cutoff_date=cutoff_date,
         include_odds=include_odds,
-        add_recent_form_features=add_recent_form_features,
-        recent_form_window=recent_form_window,
     )
-    if not (source_dir / "best_model.pkl").exists():
-        raise FileNotFoundError(
-            f"No trained model found in {source_dir}. Run --stage train first."
-        )
+    # Infer variant name from the found directory
+    variant_name = source_dir.name
 
-    frozen_dir = get_frozen_variant_dir(
-        models_dir=models_dir,
-        cutoff_date=cutoff_date,
-        include_odds=include_odds,
-        add_recent_form_features=add_recent_form_features,
-        recent_form_window=recent_form_window,
-        freeze_label=freeze_label,
+    frozen_dir = (
+        models_dir / "frozen" / freeze_label / f"date_{cutoff_date}" / variant_name
     )
     frozen_dir.mkdir(parents=True, exist_ok=True)
 
@@ -103,14 +90,19 @@ def freeze_model_variants(
     freeze_label: str = "official",
 ) -> List[FreezeRunSummary]:
     """Freeze model artifacts for multiple selected variants."""
-    return [
-        freeze_model_variant(
-            models_dir=models_dir,
-            cutoff_date=cutoff_date,
-            include_odds=include_odds,
-            add_recent_form_features=add_recent_form_features,
-            recent_form_window=recent_form_window,
-            freeze_label=freeze_label,
-        )
-        for include_odds in include_odds_variants
-    ]
+    summaries: List[FreezeRunSummary] = []
+    for include_odds in include_odds_variants:
+        try:
+            summary = freeze_model_variant(
+                models_dir=models_dir,
+                cutoff_date=cutoff_date,
+                include_odds=include_odds,
+                add_recent_form_features=add_recent_form_features,
+                recent_form_window=recent_form_window,
+                freeze_label=freeze_label,
+            )
+            summaries.append(summary)
+        except FileNotFoundError as e:
+            variant_name = "extended" if include_odds else "base"
+            print(f"Warning: Skipping variant '{variant_name}' - {e}")
+    return summaries

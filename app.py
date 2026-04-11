@@ -57,13 +57,71 @@ SCRAPE_JOBS_LOCK = threading.Lock()
 
 
 # ===== HELPERS =====
+def _find_frozen_model_dir():
+    """Find available frozen model directory (base or extended variant)."""
+    frozen_base = Path("data/models/frozen/official/date_2024-08-01")
+
+    if not frozen_base.exists():
+        raise FileNotFoundError(f"Frozen models directory not found: {frozen_base}")
+
+    # Look for any directory with best_model.pkl
+    for candidate in frozen_base.iterdir():
+        if candidate.is_dir() and (candidate / "best_model.pkl").exists():
+            return candidate
+
+    raise FileNotFoundError(
+        f"No frozen model found in {frozen_base}. Run training pipeline first."
+    )
+
+
+def _find_models_dir():
+    """Find available trained model directory for test predictions."""
+    models_base = Path("data/models/date_2024-08-01")
+
+    if not models_base.exists():
+        raise FileNotFoundError(f"Models directory not found: {models_base}")
+
+    # Look for any directory with test_predictions.csv
+    for candidate in models_base.iterdir():
+        if candidate.is_dir() and (candidate / "test_predictions.csv").exists():
+            return candidate
+
+    raise FileNotFoundError(
+        f"No model with test predictions found in {models_base}. Run training first."
+    )
+
+
+def _find_processed_dir(model_variant_name: str = ""):
+    """Find processed data directory matching the model variant."""
+    processed_base = Path("data/processed")
+
+    if not processed_base.exists():
+        raise FileNotFoundError(f"Processed data directory not found: {processed_base}")
+
+    # Try to find directory matching the model variant
+    if model_variant_name:
+        variant_dir = processed_base / model_variant_name
+        if variant_dir.exists() and variant_dir.is_dir():
+            return variant_dir
+
+    # Fall back: look for any directory that has subdirectories with CSV files
+    for candidate in processed_base.iterdir():
+        if candidate.is_dir():
+            for subdir in candidate.iterdir():
+                if subdir.is_dir() and list(subdir.glob("*.csv")):
+                    return candidate
+
+    raise FileNotFoundError(
+        f"No processed data found in {processed_base}. Run preprocessing first."
+    )
+
+
 @st.cache_resource
 def load_model_and_data():
     """Load trained model and processed data."""
-    model_dir = Path(
-        "data/models/frozen/official/date_2024-08-01/extended_recent_form_w5"
-    )
-    predictions_dir = Path("data/models/date_2024-08-01/extended_recent_form_w5")
+    model_dir = _find_frozen_model_dir()
+    predictions_dir = _find_models_dir()
+    processed_data_dir = _find_processed_dir()
 
     # Load model
     with open(model_dir / "best_model.pkl", "rb") as f:
@@ -76,7 +134,6 @@ def load_model_and_data():
     test_pred["date"] = pd.to_datetime(test_pred["date"])
 
     # Load processed data for all countries
-    processed_data_dir = Path("data/processed/extended_recent_form_w5")
     raw_data = {}
 
     for country_dir in processed_data_dir.iterdir():
